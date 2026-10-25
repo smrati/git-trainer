@@ -1,0 +1,1611 @@
+id: foundations
+title: Foundations
+description: >-
+  What a repository is, and the three places a file can be in: the working
+  tree, the staging area, and a commit. Start here if you have never used
+  git, or if you use it every day but could not say what the staging area is
+  for.
+difficulty: beginner
+order: 1
+lessons:
+  - id: f-what-is-a-repository
+    title: What a repository is
+    summary: The .git directory, the working tree, and how to tell where you are.
+    body: |
+      # What a repository is
+
+      A git repository is a directory that contains a subdirectory called
+      `.git`. Everything else in the directory is your **working tree** --
+      the files you actually edit.
+
+      ```bash
+      mkdir demo && cd demo
+      git init
+      ```
+
+      That creates `.git/`. It is not a normal folder: it holds the entire
+      history of the project, the branches, the tags, and the staging area.
+      Deleting it does not delete your files, but it does throw away
+      everything git knows about them.
+
+      ## Three places a file can be
+
+      This is the idea the whole of git is built on, and it is worth having
+      in your head before any command:
+
+      | Place | What it is | What you edit it with |
+      | --- | --- | --- |
+      | **working tree** | the files on disk | your editor |
+      | **staging area** | the set of changes you have *chosen* | `git add` |
+      | **repository** | what has been committed | `git commit` |
+
+      `git add` moves a change from the working tree into the staging area.
+      `git commit` moves the staging area into the repository. That is all
+      `git add` and `git commit` do, and everything else in this course is
+      a variation on it.
+
+      The staging area is the part that confuses people, so it is worth
+      being concrete about why it exists. It is there so you can commit
+      *some* of your changes and leave the rest. A commit is a unit of
+      work -- a bug fix, a rename, a new test -- and the staging area is how
+      you decide what goes into it.
+
+      ## Where am I?
+
+      ```bash
+      git rev-parse --show-toplevel   # the root of the repository
+      git rev-parse --git-dir         # where the .git directory is
+      git rev-parse --is-inside-work-tree
+      ```
+
+      `rev-parse` is git's "print me this value" command. It is the one you
+      reach for when you want to ask git a question about *where* it is
+      rather than about the history.
+
+      > **Callout**
+      > A repository is not the same as a project directory. A directory with
+      > no `.git` in it is just a directory; git commands in it fail with
+      > "not a git repository".
+    exercises:
+      - id: f-init-a-repository
+        title: Create a repository
+        prompt: |
+          The directory you are in is not a repository yet. Turn it into one.
+
+          Do not make any commits -- the repository should exist, and it
+          should have no history yet.
+        kind: cli
+        starter: |
+          # Write your commands here, one per line.
+          #
+          # The directory already contains a README.md. Leave it alone.
+        solution: |
+          git init
+        seed:
+          init: false
+          files:
+            README.md: |
+              # demo
+
+              A project that has not been put under version control yet.
+        checks:
+          - name: the directory is a working tree
+            kind: command
+            command: git rev-parse --is-inside-work-tree
+          - name: the repository's directory is .git
+            kind: command
+            command: git rev-parse --git-dir
+        hints:
+          - |
+            `git init` creates the `.git` directory. It does not commit
+            anything.
+          - |
+            The check asks git whether it is inside a working tree, and
+            where the `.git` directory is. Neither of those needs a commit
+            to exist.
+        teach: |
+          `git init` creates a `.git` directory and points `HEAD` at an
+          unborn branch. The branch exists as a name before it exists as a
+          commit, which is why asking for the number of commits in a brand
+          new repository fails -- there is no commit to count yet.
+
+          The name of the initial branch comes from `init.defaultBranch`,
+          which this trainer sets to `main`. You can see which branch you
+          are on with `git symbolic-ref --short HEAD` even before the first
+          commit, because the branch name is recorded even when the commit
+          it points at does not exist.
+        tags: [init, basics]
+      - id: f-find-the-root
+        title: Print the repository's root
+        prompt: |
+          This directory is already inside a repository. Write a command that
+          prints the **absolute path** of the repository's root directory.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git rev-parse --show-toplevel
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+        checks:
+          - name: the script prints the repository's root
+            kind: output
+        hints:
+          - |
+            `git rev-parse` prints values git knows about. `--show-toplevel`
+            is the one that means "the top of the working tree".
+          - |
+            `--show-prefix` is the same idea for the current directory
+            instead of the root.
+        teach: |
+          `--show-toplevel` is what every script that needs to know "where
+          am I?" should use. `pwd` gives the current directory, which is
+          not the same thing once you have moved into a subdirectory.
+
+          It is also the safest way to find the repository root from inside
+          a subdirectory: git searches upwards for `.git`, so the answer is
+          the same wherever you are.
+        tags: [basics, init]
+      - id: f-untracked-files
+        title: List the files git is not tracking
+        prompt: |
+          This repository has one committed file and one file that git has
+          never seen.
+
+          Write a command that prints the files git is **not** tracking, one
+          per line. Only `notes.txt` should be printed.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git ls-files --others --exclude-standard
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+          after:
+            - printf 'scratch notes\n' > notes.txt
+        checks:
+          - name: the untracked file is listed
+            kind: output
+        hints:
+          - |
+            `git ls-files` lists the files git *is* tracking.
+          - |
+            `--others` adds the ones it is not. `--exclude-standard` keeps
+            the ignored files out of the answer.
+        teach: |
+          `git ls-files` is the index's own view of the world: the exact
+          list of paths git will put into the next commit.
+
+          `--others` inverts it. `--exclude-standard` applies the ignore
+          rules, so a file matched by `.gitignore` does not show up. Drop
+          that flag and you see the ignored files too, which is occasionally
+          what you want and usually is not.
+
+          `git status` is the friendly version of the same information, but
+          it is for humans; `ls-files` is for scripts.
+        tags: [status, staging, basics]
+  - id: f-the-three-places
+    title: The three places a file can be
+    summary: Staging, committing, and what each of them actually does.
+    body: |
+      # The three places a file can be
+
+      From the last lesson:
+
+      ```
+      working tree  --git add-->  staging area  --git commit-->  repository
+            ^                            |                          |
+            +----- git restore ----------+                          |
+            +----- git restore --staged ----------------------------+
+      ```
+
+      Read that as a diagram of the *two* commands you will use every single
+      day, and the two commands that undo them.
+
+      ## Moving a change into the staging area
+
+      ```bash
+      git add README.md
+      git add .              # everything in this directory, recursively
+      git add -p             # pick the hunks, interactively
+      ```
+
+      `git add .` adds every change under the current directory. `git add -p`
+      adds *some* of them, hunk by hunk -- the way you stage a bug fix
+      without staging the half-finished refactor that happened to be in the
+      same file.
+
+      ## Looking at what is staged
+
+      ```bash
+      git status             # the friendly version
+      git diff               # working tree against the staging area
+      git diff --staged      # staging area against the last commit
+      ```
+
+      `git diff` with no arguments compares the working tree to the
+      *staging area*. That is the thing that surprises people: plain `git
+      diff` does not show you what your next commit will contain. `git diff
+      --staged` does.
+
+      ## Moving the staging area into the repository
+
+      ```bash
+      git commit -m "Add a README"
+      ```
+
+      The `-m` is the commit message, and it is not optional in practice.
+      Without it git opens an editor, and in a script there is no editor --
+      so a commit with no message fails with "Aborting commit due to empty
+      commit message".
+
+      A commit is not a diff. It is a **snapshot** of the whole working
+      tree, plus a pointer to its parent. That is why a commit is cheap and
+      why an empty commit is meaningful.
+    exercises:
+      - id: f-stage-a-file
+        title: Stage a file
+        prompt: |
+          This repository has one file that git has never seen, called
+          `notes.txt`.
+
+          Put it in the staging area. Do not commit it.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git add notes.txt
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+          after:
+            - printf 'scratch notes\n' > notes.txt
+        checks:
+          - name: notes.txt is in the staging area
+            kind: state
+            select: status
+          - name: the index knows about the file
+            kind: command
+            command: git ls-files
+        hints:
+          - |
+            `git add <path>` puts a file in the staging area.
+          - |
+            The check reads git's own view of the staging area, so it sees
+            the file whether or not you have committed anything.
+        teach: |
+          `git add` copies the file's current contents into the index. The
+          index is the staging area: a second copy of the paths and blobs
+          that will become the next commit.
+
+          Notice what `git add` does *not* do: it does not record a
+          snapshot of the file forever. If you change the file again and
+          `git add` it again, the index now holds the newer contents. The
+          staging area always describes the *next* commit, never the last
+          one.
+        tags: [staging]
+      - id: f-stage-then-change-again
+        title: Stage a change, then make another
+        prompt: |
+          `notes.txt` is in the staging area, but its contents on disk have
+          changed since it was staged.
+
+          Print git's report of the repository in the **machine-readable
+          format**: one line per change, with no decoration. The line for
+          `notes.txt` should say that the file is both staged and modified.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git status --porcelain
+        seed:
+          files:
+            README.md: |
+              # demo
+            notes.txt: |
+              the original note
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+          after:
+            - git add notes.txt
+            - printf 'the second note\n' > notes.txt
+        checks:
+          - name: the script prints the machine-readable status
+            kind: output
+        hints:
+          - |
+            `git status --porcelain` prints one line per change, in a
+            format that is meant for scripts. The first column is the
+            staged change, the second is the change in the working tree.
+          - |
+            A line that reads `MM notes.txt` means the file is modified
+            *and* staged -- the two versions differ.
+        teach: |
+          This is the clearest picture of what the staging area is for. The
+          index holds a copy of the file, taken when you ran `git add`. The
+          file on disk has moved on since. Git tracks both, and can show
+          you either.
+
+          The porcelain format is two columns: the first is the state of
+          the file in the index, the second is the state of the file in the
+          working tree. `M` in the first column means "staged and
+          different from HEAD"; `M` in the second means "changed on disk
+          since it was staged".
+
+          `git status` in its long form says the same thing in prose, which
+          is friendlier and much harder to parse.
+        tags: [staging, status]
+      - id: f-commit-the-staged-file
+        title: Make the commit
+        prompt: |
+          `notes.txt` is in the staging area.
+
+          Commit it with the message `Add the notes`, and leave the working
+          tree clean.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git commit -m "Add the notes"
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+          after:
+            - printf 'scratch notes\n' > notes.txt
+            - git add notes.txt
+        checks:
+          - name: the working tree is clean
+            kind: command
+            command: git status --porcelain
+          - name: the history has two commits
+            kind: command
+            command: git rev-list --count HEAD
+          - name: the newest commit says what it should
+            kind: command
+            command: git log -1 --format=%s
+        hints:
+          - |
+            `git commit` takes the *staging area*, not the working tree.
+          - |
+            The message goes in `-m "..."`. Without it git would try to open
+            an editor, and there is no editor here.
+        teach: |
+          `git commit` with no paths commits the whole staging area. If you
+          pass paths -- `git commit notes.txt` -- it commits the current
+          contents of those files instead, which quietly ignores what you
+          had staged. That difference is a classic source of surprise, so
+          most people use the plain form.
+
+          The commit message is not decoration. It is the only thing that
+          will still be there in a year to explain why a line exists. A
+          commit that says "fix bug" tells the next reader nothing; one
+          that says "Validate the email address before creating an account"
+          tells them everything.
+        tags: [commit, staging]
+      - id: f-what-did-the-commit-contain
+        title: What did the commit contain
+        prompt: |
+          This repository has one commit. Write a command that prints the
+          **names of the files** that commit touched, one per line, and
+          nothing else.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git show --name-only --format= HEAD
+        seed:
+          files:
+            README.md: |
+              # demo
+            app.py: |
+              print("hello")
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+        checks:
+          - name: the script prints the file names and nothing else
+            kind: output
+        hints:
+          - |
+            `git show` displays a commit: its metadata and its changes.
+          - |
+            `--name-only` replaces the diff with a list of paths, and
+            `--format=` with nothing after it suppresses the metadata.
+        teach: |
+          `git show` is the "look at this commit" command, and by default it
+          shows the metadata followed by the diff.
+
+          `--format=` with an empty value is the idiomatic way to say "no
+          metadata, just the content" -- it overrides the default format
+          string. `--name-only` then reduces the diff to the file names.
+
+          `git show --stat` is the middle ground: it keeps a one-line
+          summary per file with the number of lines changed, which is often
+          the most useful view of a commit you did not write.
+        tags: [commit, log]
+  - id: f-making-commits
+    title: Making commits
+    summary: Messages, amending, and what git does and does not track.
+    body: |
+      # Making commits
+
+      ## The message
+
+      ```bash
+      git commit -m "Add the parser"
+      ```
+
+      One line, in the imperative mood, describing what the change *does*.
+      The first line is the summary; the rest of the message is the body,
+      and the body is where you explain *why*.
+
+      ```bash
+      git commit -m "Add the parser" -m "It was failing on nested lists."
+      ```
+
+      Two `-m` flags are two paragraphs. A long message can also be given
+      with `git commit -F file` or by letting git open an editor.
+
+      ## Amending
+
+      ```bash
+      git commit --amend -m "A better message"
+      git commit --amend --no-edit
+      ```
+
+      `--amend` replaces the last commit with a new one that has the same
+      parent. It is how you fix a typo in a message, or add a file you
+      forgot to stage -- **as long as nobody has pulled your commit yet**.
+
+      That last caveat is the whole story of rebasing: a commit that other
+      people have already seen is part of the shared history, and rewriting
+          it means rewriting their history too.
+
+      ## What git does not track
+
+      Git tracks **files**, and it tracks the contents of those files. It
+      does not track:
+
+      - **empty directories** -- a directory only exists to git if it
+        contains a file;
+      - **file permissions**, except for the executable bit;
+      - **the order of files**;
+      - **anything outside the working tree**, unless you ask for it.
+
+      The empty directory is the one that surprises people. A `.gitkeep`
+      file is the usual workaround, and it is a workaround rather than a
+      feature.
+    exercises:
+      - id: f-write-a-good-message
+        title: Commit with a specific message
+        prompt: |
+          Two files have changed: `app.py` and `README.md`. Both should go
+          into one commit.
+
+          Commit them with the message `Add the app and its readme`.
+        kind: cli
+        starter: |
+          # Write your commands here, one per line.
+        solution: |
+          git add app.py README.md
+          git commit -m "Add the app and its readme"
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+          after:
+            - printf 'print("hello")\n' > app.py
+            - printf '\n## The app\n' >> README.md
+        checks:
+          - name: the history has two commits
+            kind: command
+            command: git rev-list --count HEAD
+          - name: the newest commit has the right message
+            kind: command
+            command: git log -1 --format=%s
+          - name: both files are in the commit
+            kind: command
+            command: git show --name-only --format= HEAD
+        hints:
+          - |
+            Two files, two `git add` calls, one `git commit`.
+          - |
+            `git add .` would also work here, but naming the files is
+            better habit -- it makes the commit say what it contains.
+        teach: |
+          The order matters: `git add` first, then `git commit`. A commit
+          takes what is in the staging area at the moment you run it.
+
+          `git show --name-only --format= HEAD` is a good thing to run
+          after every commit, at least until it becomes habit. It is the
+          cheapest way to notice that you staged the wrong file.
+        tags: [commit, staging]
+      - id: f-amend-the-message
+        title: Fix the message
+        prompt: |
+          The last commit's message says `Add teh app`. That is a typo, and
+          it is the only commit that has ever been pushed, so nobody else
+          has it.
+
+          Rewrite that commit's message to `Add the app`. The commit's
+          contents must not change.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git commit --amend -m "Add the app"
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+            - printf 'print("hello")\n' > app.py
+            - git add app.py
+            - git commit -m "Add teh app"
+        checks:
+          - name: the history still has two commits
+            kind: command
+            command: git rev-list --count HEAD
+          - name: the newest commit has the right message
+            kind: command
+            command: git log -1 --format=%s
+          - name: the commit still contains app.py
+            kind: command
+            command: git show --name-only --format= HEAD
+        hints:
+          - |
+            `git commit --amend` replaces the last commit.
+          - |
+            `--amend -m "..."` sets a new message in the same step.
+        teach: |
+          Amending does not "edit" the commit -- it creates a new commit
+          with the same parent, the same tree and the new message, and moves
+          the branch to it. The old commit becomes unreachable and will be
+          garbage collected eventually.
+
+          That is why amending is safe before you push and dangerous after:
+          once the commit is on a remote, other people have it, and
+          amending creates a *different* commit with the same parent. Their
+          history and yours now disagree.
+        tags: [commit]
+      - id: f-amend-the-content
+        title: Fix the commit's contents
+        prompt: |
+          The last commit says it added `app.py`, but it added the wrong
+          contents -- `app.py` should say `print("goodbye")`.
+
+          Rewrite the commit so that it contains the corrected file. The
+          commit message should stay exactly as it is.
+        kind: cli
+        starter: |
+          # Write your commands here, one per line.
+        solution: |
+          printf 'print("goodbye")\n' > app.py
+          git add app.py
+          git commit --amend --no-edit
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+            - printf 'print("hello")\n' > app.py
+            - git add app.py
+            - git commit -m "Add the app"
+        checks:
+          - name: the history still has two commits
+            kind: command
+            command: git rev-list --count HEAD
+          - name: the commit message is unchanged
+            kind: command
+            command: git log -1 --format=%s
+          - name: the committed file has the new contents
+            kind: command
+            command: git show HEAD:app.py
+        hints:
+          - |
+            Change the file first, then stage it, then amend.
+          - |
+            `--no-edit` tells git to keep the existing commit message
+            instead of opening an editor.
+        teach: |
+          This is the commonest use of `--amend`: you committed too early
+          and the commit is not what you wanted.
+
+          `git show HEAD:app.py` prints a file *as it is in a commit*, not
+          as it is on disk. It is the way to check what a commit really
+          contains -- `git show HEAD:path` and `git show <ref>:path` are
+          worth remembering, because they let you read any version of any
+          file without checking anything out.
+
+          `--no-edit` is what makes this safe in a script: without it git
+          would open an editor for the commit message.
+        tags: [commit, staging]
+      - id: f-empty-directories
+        title: Empty directories are not tracked
+        prompt: |
+          This repository has an empty directory called `assets`.
+
+          Write the commands that make git pay attention to it. The
+          directory is not in the staging area yet, and git cannot track a
+          directory on its own.
+        kind: cli
+        starter: |
+          # Write your commands here, one per line.
+        solution: |
+          touch assets/.gitkeep
+          git add assets/.gitkeep
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+          after:
+            - mkdir assets
+        checks:
+          - name: the index contains the placeholder
+            kind: command
+            command: git ls-files
+          - name: the staging area has an entry under assets
+            kind: state
+            select: status
+        hints:
+          - |
+            Git tracks files, not directories. A directory exists to git
+            only if it contains a tracked file.
+          - |
+            The usual convention is a placeholder file called `.gitkeep`.
+        teach: |
+          A git commit is a tree of blobs and trees. A tree entry with no
+          blobs under it is meaningless, so git does not record empty
+          directories at all. `mkdir assets` leaves nothing behind in the
+          repository.
+
+          `.gitkeep` is a convention, not a git feature. Git has no idea
+          what the name means; the point is only that it is a file, so
+          there is something to commit.
+
+          Some projects use `.gitkeep`, others use a `.gitignore` that
+          ignores everything inside the directory, others keep a real
+          placeholder like `README.md`. All three work. What does not work
+          is expecting git to remember an empty directory.
+        tags: [basics, staging]
+  - id: f-ignoring-files
+    title: Ignoring files
+    summary: .gitignore, files that are already tracked, and forcing a file in.
+    body: |
+      # Ignoring files
+
+      Some files should never be committed: build output, editor
+      settings, credentials, large data sets. `.gitignore` is a list of
+      patterns, and git consults it constantly.
+
+      ```bash
+      echo "*.log" >> .gitignore
+      echo "build/" >> .gitignore
+      echo "!important.log" >> .gitignore
+      ```
+
+      The patterns are the same as a `.gitignore` anywhere else in the
+      world:
+
+      | Pattern | Matches |
+      | --- | --- |
+      | `*.log` | any file ending in `.log`, in any directory |
+      | `build/` | any directory named `build`, and everything in it |
+      | `/notes.txt` | `notes.txt` at the top level only |
+      | `**/temp/` | any directory named `temp`, at any depth |
+
+      A leading `!` negates a pattern, so `*.log` followed by
+      `!important.log` ignores every log file except that one.
+
+      ## The rule that surprises people
+
+      > **.gitignore only affects files git is not already tracking.**
+
+      Once a file has been committed, `.gitignore` has no effect on it.
+      Git will keep tracking it, and keep showing it as modified, forever.
+      Ignoring only ever applies to files that are *not* in the index.
+
+      To stop tracking a file that is already committed:
+
+      ```bash
+      git rm --cached secrets.txt
+      ```
+
+      `--cached` removes it from the index but leaves it on disk. That is
+      almost always what you want: the file stays in your working tree, it
+      just stops being part of the repository.
+
+      ## Forcing a file in
+
+      The other rule, and the one people hit when they have ignored
+      something too broadly:
+
+      ```bash
+      git add -f important.log
+      ```
+
+      `-f` overrides the ignore rules. It is the escape hatch for the case
+      where a file matches an ignore pattern but genuinely belongs in the
+      repository.
+    exercises:
+      - id: f-add-a-gitignore
+        title: Ignore the build directory
+        prompt: |
+          There is a `build` directory full of output that should never be
+          committed.
+
+          Write a `.gitignore` that ignores it, and stage the `.gitignore`.
+          Do not commit it.
+        kind: cli
+        starter: |
+          # Write your commands here, one per line.
+          #
+          # You will need to create a file. A shell redirection will do.
+        solution: |
+          printf 'build/\n' > .gitignore
+          git add .gitignore
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+          after:
+            - mkdir build
+            - printf 'binary\n' > build/output.bin
+        checks:
+          - name: the build directory is ignored
+            kind: command
+            command: git check-ignore -q build/output.bin
+          - name: the .gitignore is staged
+            kind: command
+            command: git ls-files
+          - name: the build output is not in the index
+            kind: state
+            select: status
+        hints:
+          - |
+            A pattern ending in a slash matches a directory and everything
+            under it.
+          - |
+            `git check-ignore` asks git whether a path is ignored. It exits
+            0 when it is, and 1 when it is not.
+        teach: |
+          `git check-ignore` is the direct way to ask the question, and it
+          is the one to reach for when an ignore rule is not doing what you
+          expected. `git check-ignore -v <path>` shows *which* rule matched.
+
+          The trailing slash in `build/` matters: it restricts the pattern
+          to directories. Without it, `build` would match a file called
+          `build` as well, which is usually not what you meant.
+
+          Note that the pattern in `.gitignore` is matched against the path
+          *relative to the directory holding the .gitignore*. A pattern
+          containing a slash is anchored to that directory; a pattern
+          without one matches at any depth.
+        tags: [ignore]
+      - id: f-ignore-an-already-tracked-file
+        title: Stop tracking a file
+        prompt: |
+          `config.local` has already been committed. It should not be --
+          it is machine-specific.
+
+          Write the commands that make git stop tracking it **and** leave it
+          on disk, and add it to a `.gitignore` so it does not come back.
+        kind: cli
+        starter: |
+          # Write your commands here, one per line.
+        solution: |
+          printf 'config.local\n' > .gitignore
+          git rm --cached config.local
+          git add .gitignore
+        seed:
+          files:
+            README.md: |
+              # demo
+            config.local: |
+              port = 8080
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+        checks:
+          - name: the file is no longer tracked
+            kind: command
+            command: git ls-files
+          - name: the file is still on disk
+            kind: command
+            command: test -f config.local
+          - name: the file is ignored
+            kind: command
+            command: git check-ignore -q config.local
+        hints:
+          - |
+            `.gitignore` on its own will not do it: the file is already
+            tracked, so the ignore rule is ignored.
+          - |
+            `git rm --cached <path>` removes a file from the index and
+            leaves it on disk.
+        teach: |
+          This is the rule that catches everybody out once. Ignore rules
+          are consulted when git decides *whether to start tracking* a
+          file. Once a path is in the index, git tracks it, and it will
+          keep tracking it no matter what the ignore file says.
+
+          `git rm --cached` removes the path from the index without
+          touching the working tree. The next commit deletes the file from
+          the repository -- and every other machine that pulls it -- while
+          it stays exactly where it is on your disk.
+
+          The order matters here in a small way: writing the `.gitignore`
+          first means that between the `rm --cached` and the commit, the
+          file is both untracked and ignored, so nothing can re-add it by
+          accident.
+        tags: [ignore, staging]
+      - id: f-force-add-an-ignored-file
+        title: Add a file the rules say to ignore
+        prompt: |
+          `.gitignore` contains `*.log`. But `important.log` genuinely
+          belongs in the repository -- it is a sample log other people
+          need.
+
+          Put it in the staging area, overriding the ignore rule.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git add -f important.log
+        seed:
+          files:
+            README.md: |
+              # demo
+            .gitignore: |
+              *.log
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+          after:
+            - printf 'a log line\n' > important.log
+        checks:
+          - name: the file is in the index
+            kind: command
+            command: git ls-files
+          - name: the staging area knows about it
+            kind: state
+            select: status
+        hints:
+          - |
+            `git add` refuses to add a file that is ignored.
+          - |
+            `git add -f` forces it anyway.
+        teach: |
+          The `-f` flag stands for `--force`, and it overrides the ignore
+          rules for this one command.
+
+          It is worth understanding *why* it exists rather than reaching for
+          it by reflex. Ignore rules are a safety net, and the safety net
+          should win by default -- otherwise a broad pattern like `*.log`
+          quietly stops you committing a file you meant to. `-f` is the
+          deliberate override.
+
+          The alternative, when a file genuinely should always be tracked
+          despite a broad pattern, is to un-ignore it in the ignore file
+          itself: `!important.log`. Both approaches are correct; they
+          differ in where the exception is recorded.
+        tags: [ignore, staging]
+  - id: f-comparing-changes
+    title: Comparing changes
+    summary: diff against the working tree, the staging area, and the last commit.
+    body: |
+      # Comparing changes
+
+      `git diff` is one command with several meanings, and knowing which
+      one you asked for saves a lot of confusion.
+
+      ```bash
+      git diff              # working tree  vs  staging area
+      git diff --staged     # staging area  vs  HEAD (the last commit)
+      git diff HEAD         # working tree  vs  HEAD
+      ```
+
+      A useful way to remember it: **plain `git diff` does not show you
+      what your next commit will contain.** It shows you what you have
+      changed *since you last staged anything*. If you have staged
+      everything, `git diff` shows nothing at all, even though you have a
+      commit's worth of changes waiting to be committed.
+
+      `git diff --staged` is the one that answers "what am I about to
+      commit?".
+
+      ## Diffing anything against anything
+
+      ```bash
+      git diff HEAD~1 HEAD           # the last commit's changes
+      git diff main feature          # two branches
+      git diff v1.0 v2.0             # two tags
+      git show HEAD:app.py           # a file as it was in a commit
+      ```
+
+      Any two commits can be compared. Any two branches. Any commit and any
+      file. Git's history is a graph, so "the difference between these two
+      things" is always a well-defined question.
+    exercises:
+      - id: f-diff-the-working-tree
+        title: See what you have changed
+        prompt: |
+          `app.py` has been changed on disk but not staged.
+
+          Write a command that prints the difference between the file on
+          disk and the version in the staging area.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git diff
+        seed:
+          files:
+            README.md: |
+              # demo
+            app.py: |
+              print("hello")
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+          after:
+            - printf 'print("goodbye")\n' > app.py
+        checks:
+          - name: the script prints the diff
+            kind: output
+        hints:
+          - |
+            `git diff` with no arguments compares the working tree with the
+            staging area.
+          - |
+            `git diff app.py` restricts the output to one file.
+        teach: |
+          The default comparison is working tree against staging area,
+          which is the pair of things you change most often.
+
+          The output is a unified diff: lines prefixed with `-` are in the
+          staging area but not on disk, lines prefixed with `+` are on disk
+          but not in the staging area, and lines prefixed with a space are
+          in both.
+
+          The `@@` header names the hunk and the line numbers in each
+          version. It is the thing to look at when a diff looks wrong:
+          if the line numbers do not line up, the file has changed since
+          the diff was generated.
+        tags: [diff]
+      - id: f-diff-what-is-staged
+        title: See what you are about to commit
+        prompt: |
+          `app.py` has been changed and staged. `README.md` has been
+          changed but not staged.
+
+          Write a command that prints the changes that are **staged** --
+          the ones that would go into the next commit.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git diff --staged
+        seed:
+          files:
+            README.md: |
+              # demo
+            app.py: |
+              print("hello")
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+          after:
+            - printf 'print("goodbye")\n' > app.py
+            - git add app.py
+            - printf '\nMore text.\n' >> README.md
+        checks:
+          - name: only the staged change is shown
+            kind: output
+        hints:
+          - |
+            `git diff --staged` compares the staging area with the last
+            commit.
+          - |
+            `--staged` used to be spelled `--cached`. Both still work.
+        teach: |
+          This is the check to run before every commit. It shows exactly
+          what the commit will contain -- and nothing else.
+
+          The comparison is staging area against `HEAD`, the commit that
+          currently exists. If there is no commit yet, `HEAD` is unborn
+          and git compares against the empty tree, which is why the first
+          `git diff --staged` in a new repository shows every file as
+          added.
+
+          `git diff --cached` is the older spelling and does exactly the
+          same thing.
+        tags: [diff, staging]
+      - id: f-diff-against-the-last-commit
+        title: See everything at once
+        prompt: |
+          `app.py` has been changed and staged. `README.md` has been
+          changed but not staged.
+
+          Write a command that prints **both** changes -- everything that
+          differs between the last commit and the working tree.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git diff HEAD
+        seed:
+          files:
+            README.md: |
+              # demo
+            app.py: |
+              print("hello")
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+          after:
+            - printf 'print("goodbye")\n' > app.py
+            - git add app.py
+            - printf '\nMore text.\n' >> README.md
+        checks:
+          - name: both changes are shown
+            kind: output
+        hints:
+          - |
+            `git diff <commit>` compares the working tree with that commit.
+          - |
+            `HEAD` is the name of the commit you are on.
+        teach: |
+          Naming a commit turns `git diff` into "compare the working tree
+          with this commit", which is the most general form of the command.
+
+          It is the right thing to use when you want to know "what have I
+          done since the last commit?" in one go, ignoring what happens to
+          be staged.
+
+          `git diff --staged HEAD` is the same comparison done the other way
+          round -- staging area against `HEAD` -- and is the one to use when
+          you want to review exactly what a commit will contain.
+        tags: [diff, staging]
+  - id: f-undoing-things
+    title: Undoing things
+    summary: restore, reset, revert -- and choosing the right one.
+    body: |
+      # Undoing things
+
+      Git gives you three ways to undo, and they differ in one important
+      respect: **whether the history is rewritten**.
+
+      | Command | What it undoes | Rewrites history? |
+      | --- | --- | --- |
+      | `git restore` | a change in the working tree | no |
+      | `git reset` | a commit (or a staging) | yes |
+      | `git revert` | a commit, by adding a new one | no |
+
+      ## `git restore` -- throw away a change
+
+      ```bash
+      git restore app.py            # discard the change on disk
+      git restore --staged app.py   # un-stage, keep the change on disk
+      ```
+
+      `git restore` is the modern replacement for `git checkout -- file`.
+      It has two halves: without `--staged` it changes the working tree;
+      with `--staged` it changes the index. You can give both, in which
+      case the file goes back to exactly what is in the last commit.
+
+      ## `git reset` -- move the branch
+
+      ```bash
+      git reset HEAD~1 --soft    # move the branch, keep the changes staged
+      git reset HEAD~1 --mixed   # move the branch, unstage the changes
+      git reset HEAD~1 --hard    # move the branch, throw the changes away
+      ```
+
+      `--soft`, `--mixed` and `--hard` say how much of the index and the
+      working tree is reset along with the branch pointer.
+
+      `--hard` is the dangerous one. It is also the only one that can lose
+      work that was never committed.
+
+      ## `git revert` -- undo a commit properly
+
+      ```bash
+      git revert <commit>
+      ```
+
+      `git revert` does not rewrite anything. It computes the inverse of a
+      commit's changes and commits that, so the history says what actually
+      happened: the change was made, and then it was undone.
+
+      This is why `revert` is the right tool once a commit has been pushed,
+      and `reset` is the wrong one.
+
+      ## Which one?
+
+      - You have not committed the change, and you want it gone:
+        `git restore`.
+      - You have not committed the change, but you want it staged:
+        `git restore --staged`.
+      - You have committed it but not pushed it, and you want it gone:
+        `git reset`.
+      - You have pushed it, and you want it undone for everybody:
+        `git revert`.
+    exercises:
+      - id: f-discard-a-change
+        title: Throw away a change
+        prompt: |
+          `app.py` has been changed on disk. The change is wrong and you
+          want it gone.
+
+          Put the file back to exactly what is in the last commit. Do not
+          stage anything and do not make a commit.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git restore app.py
+        seed:
+          files:
+            README.md: |
+              # demo
+            app.py: |
+              print("hello")
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+          after:
+            - printf 'print("goodbye")\n' > app.py
+        checks:
+          - name: the file matches the last commit
+            kind: command
+            command: git diff --quiet
+          - name: the working tree is clean
+            kind: state
+            select: status
+        hints:
+          - |
+            `git restore <file>` puts the file back to the version in the
+            staging area.
+          - |
+            The older spelling is `git checkout -- app.py`, but `restore`
+            is clearer about what it does.
+        teach: |
+          `git restore` without `--staged` changes the **working tree**,
+          throwing away whatever is there and replacing it with the
+          contents of the index.
+
+          Since the index still holds the version from the last commit (you
+          have not staged anything), the file goes back to that version.
+
+          The change is gone for good. Git cannot recover it -- it was
+          never in a commit and it was never in the index. If you want to
+          be able to get it back, stage it first: a staged change is in the
+          index, and the index's blobs are still in the object database.
+        tags: [undo]
+      - id: f-unstage-a-file
+        title: Un-stage a file
+        prompt: |
+          `app.py` is in the staging area. You have changed your mind --
+          you do not want it in the next commit.
+
+          Take it out of the staging area but **keep the change on disk**.
+          Do not make a commit.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git restore --staged app.py
+        seed:
+          files:
+            README.md: |
+              # demo
+            app.py: |
+              print("hello")
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+          after:
+            - printf 'print("goodbye")\n' > app.py
+            - git add app.py
+        checks:
+          - name: the file is no longer in the index
+            kind: command
+            command: git ls-files
+          - name: the change is still on disk
+            kind: command
+            command: git diff
+          - name: the staging area reports the file as unstaged
+            kind: state
+            select: status
+        hints:
+          - |
+            `git restore` changes the working tree. Add `--staged` and it
+            changes the index instead.
+          - |
+            The older spelling is `git reset HEAD app.py`, which does the
+            same thing.
+        teach: |
+          `git restore --staged <file>` resets the *index* entry for that
+          path back to what is in `HEAD`. The file on disk is untouched.
+
+          The result is the state that confuses newcomers: the file is
+          modified on disk and not staged, so it shows up as an unstaged
+          change in `git status`, and `git diff` shows it.
+
+          A file can be in three interesting states at once -- different
+          content in `HEAD`, in the index and on disk -- and each of the
+          three `git diff` variants compares a different pair of them:
+          `git diff` is index against disk, `git diff --staged` is `HEAD`
+          against index, and `git diff HEAD` is `HEAD` against disk.
+        tags: [undo, staging]
+      - id: f-undo-the-last-commit-keep-the-changes
+        title: Undo the last commit, keep the work
+        prompt: |
+          The last commit should not have happened -- but the changes in it
+          are good and you want to keep them.
+
+          Undo the commit. The changes must end up **staged**, and there
+          must be only one commit left in the history.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git reset --soft HEAD~1
+        seed:
+          files:
+            README.md: |
+              # demo
+            app.py: |
+              print("hello")
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+            - printf 'print("goodbye")\n' > app.py
+            - git add app.py
+            - git commit -m "A change we do not want"
+        checks:
+          - name: the history has one commit
+            kind: command
+            command: git rev-list --count HEAD
+          - name: the changes are staged
+            kind: state
+            select: status
+          - name: the file is still in the index
+            kind: command
+            command: git ls-files
+        hints:
+          - |
+            `git reset` moves the branch pointer. `HEAD~1` means "the
+            commit before this one".
+          - |
+            `--soft` leaves the index alone; `--mixed` un-stages;
+            `--hard` throws the changes away.
+        teach: |
+          `git reset --soft HEAD~1` moves `main` back one commit and
+          changes nothing else. The index still holds the tree that was
+          committed, so the changes appear as staged -- exactly the state
+          you would be in if you had staged them and not yet committed.
+
+          `HEAD~1` is git's shorthand for "the parent of HEAD". `HEAD^`
+          means the same thing, and `HEAD~2` means the grandparent.
+
+          The three modes differ only in what else moves:
+
+          | Mode | Branch | Index | Working tree |
+          | --- | --- | --- | --- |
+          | `--soft` | moves | unchanged | unchanged |
+          | `--mixed` | moves | reset to the new HEAD | unchanged |
+          | `--hard` | moves | reset to the new HEAD | reset too |
+
+          `--hard` is the one that loses work. It should be the last thing
+          you reach for, not the first.
+        tags: [undo, commit]
+      - id: f-revert-a-commit
+        title: Undo a commit without rewriting history
+        prompt: |
+          The second commit added `app.py`, and it was wrong.
+
+          Undo it **without rewriting the history**: the result should be a
+          new commit on top of the existing ones, and `app.py` should be
+          gone.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git revert --no-edit HEAD
+        seed:
+          files:
+            README.md: |
+              # demo
+            app.py: |
+              print("hello")
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+            - printf 'print("goodbye")\n' > app.py
+            - git add app.py
+            - git commit -m "Add the app"
+        checks:
+          - name: the history has three commits
+            kind: command
+            command: git rev-list --count HEAD
+          - name: the file is gone from the index
+            kind: command
+            command: git ls-files
+          - name: the working tree is clean
+            kind: state
+            select: status
+        hints:
+          - |
+            `git revert <commit>` creates a new commit that undoes another.
+          - |
+            `--no-edit` skips the message editor, so the message is
+            generated for you.
+        teach: |
+          `git revert` computes the inverse of a commit's change and
+          commits that. The history keeps both the mistake and the undo, so
+          anybody reading it later can see what happened.
+
+          That is the whole difference between `reset` and `revert`. `reset`
+          says "that commit never happened"; `revert` says "that commit
+          happened, and then it was undone". For a commit that other people
+          have already pulled, only the second is honest.
+
+          `--no-edit` matters in a script. Without it git opens an editor
+          for the revert message, and there is no editor here.
+
+          A revert can conflict, exactly like a merge, when the commit it
+          is undoing is not the most recent change to those lines.
+        tags: [undo, revert, commit]
+  - id: f-stashing
+    title: Stashing
+    summary: Putting work aside and getting it back.
+    body: |
+      # Stashing
+
+      Sometimes you are halfway through something and need to switch tasks.
+      You do not want to commit unfinished work, and you do not want to lose
+      it either. `git stash` is the answer.
+
+      ```bash
+      git stash                # put the changes away
+      git stash list           # what is in the stash
+      git stash pop            # take it back, and drop it from the stash
+      git stash apply          # take it back, and keep it in the stash
+      git stash drop           # throw it away
+      ```
+
+      `git stash` saves the changes in the working tree *and* the staging
+      area, and then resets both back to the last commit. Your files are as
+      they were before you started.
+
+      ## It is a commit
+
+      This is the part that makes stash less mysterious than it looks. A
+      stash is a commit -- on a hidden branch called `refs/stash` -- holding
+      the state of your working tree. That is why it can hold changes that
+      were never committed, and why it survives a `git checkout`.
+
+      ```bash
+      git stash show -p        # what is in the most recent stash
+      git stash show -p stash@{2}   # ...and in an older one
+      ```
+
+      ## Naming a stash
+
+      A bare `git stash` gives you `stash@{0}: WIP on main: 1234abc`. That
+      is not much use when you have three of them.
+
+      ```bash
+      git stash push -m "half-finished parser"
+      ```
+
+      The message is the only way to tell them apart later.
+
+      ## Stashing one file
+
+      ```bash
+      git stash push -- app.py
+      ```
+
+      `--` separates the paths from the options, and only the named paths
+      are stashed. The rest of your changes stay where they are.
+
+      ## When a stash will not pop cleanly
+
+      A stash is a commit, so applying it is a merge, and it can conflict
+      with what has changed since. `git stash apply` reports the conflict
+      and leaves the stash in place, so you can sort it out and try again.
+    exercises:
+      - id: f-stash-the-changes
+        title: Put the work aside
+        prompt: |
+          `app.py` has been changed on disk and it is not finished.
+
+          Put the change aside so the working tree is clean again, and the
+          change is not lost.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git stash
+        seed:
+          files:
+            README.md: |
+              # demo
+            app.py: |
+              print("hello")
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+          after:
+            - printf 'print("goodbye")\n' > app.py
+        checks:
+          - name: the working tree is clean
+            kind: command
+            command: git status --porcelain
+          - name: the change is in the stash
+            kind: command
+            command: git stash list
+          - name: the file still has the old contents
+            kind: command
+            command: git show HEAD:app.py
+        hints:
+          - |
+            `git stash` saves the changes and cleans the working tree.
+          - |
+            `git stash list` shows what is in the stash. A stash is a
+            commit, so it has a message.
+        teach: |
+          `git stash` creates a commit on a hidden branch and then resets
+          your working tree and index back to `HEAD`. Nothing is thrown
+          away: the change is a commit, it is just not on any branch you
+          are looking at.
+
+          That is why a stash survives a `git checkout`, and why it can hold
+          a file that was never committed. It is also why a stash can be
+          applied later on a different branch -- it is a commit like any
+          other.
+
+          The one thing a stash does *not* hold is untracked files. `git
+          stash -u` includes them; without it, a brand new file stays in
+          the working tree.
+        tags: [stash]
+      - id: f-stash-with-a-message
+        title: Name the stash
+        prompt: |
+          There are two sets of unfinished changes: `app.py` is half done,
+          and `README.md` is half done too.
+
+          Put **only** `app.py` aside, and give the stash a message so you
+          can tell it apart later: `parser work`.
+        kind: cli
+        starter: |
+          # Write your commands here, one per line.
+        solution: |
+          git stash push -m "parser work" -- app.py
+        seed:
+          files:
+            README.md: |
+              # demo
+            app.py: |
+              print("hello")
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+          after:
+            - printf 'print("goodbye")\n' > app.py
+            - printf '\nMore prose.\n' >> README.md
+        checks:
+          - name: the stash has the message
+            kind: command
+            command: git stash list
+          - name: the readme change is still in the working tree
+            kind: state
+            select: status
+        hints:
+          - |
+            `git stash push -m "..."` gives the stash a name.
+          - |
+            A `--` before the paths separates them from the options, and
+            only the named paths are stashed.
+        teach: |
+          `git stash push` is the longer spelling of `git stash`, and it
+          takes the options that the short form does not: `-m` for a
+          message, `--keep-index` to leave the staging area alone, and
+          `--include-untracked` to take untracked files with it.
+
+          The `--` is not decoration. Without it, git has to guess whether
+          the word after the options is a path or an option, and putting
+          `--` in front removes the guesswork. It is the same convention
+          every other git command uses.
+
+          Naming a stash matters more than it looks. The default message
+          is `WIP on main: 1234abc`, which tells you the branch and the
+          commit but nothing about what you were doing. Three of those in a
+          row are indistinguishable.
+        tags: [stash]
+      - id: f-stash-pop
+        title: Get the work back
+        prompt: |
+          There is one stash. Bring the work back into the working tree and
+          empty the stash.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git stash pop
+        seed:
+          files:
+            README.md: |
+              # demo
+            app.py: |
+              print("hello")
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+            - printf 'print("goodbye")\n' > app.py
+            - git stash
+        checks:
+          - name: the stash is empty
+            kind: command
+            command: git stash list
+          - name: the change is back in the working tree
+            kind: state
+            select: status
+          - name: the file has the new contents
+            kind: command
+            command: cat app.py
+        hints:
+          - |
+            `git stash pop` applies the most recent stash and removes it
+            from the stash list.
+          - |
+            `git stash apply` does the same thing but keeps the stash.
+        teach: |
+          `pop` applies the stash and drops it; `apply` applies it and
+          leaves it there. Use `apply` when you might want the same changes
+          again -- applying twice is harmless, popping twice is not.
+
+          Applying a stash is a merge, so it can conflict. If it does,
+          `git stash apply` leaves the stash in place, so you can resolve
+          the conflict and try again. A `git stash pop` that conflicts
+          keeps the stash too, for the same reason.
+
+          The stash is dropped only when the apply succeeds. That is
+          deliberate: a tool that threw your work away when the merge
+          failed would be a tool nobody would trust.
+        tags: [stash]

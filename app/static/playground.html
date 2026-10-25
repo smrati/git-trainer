@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Playground · Git Trainer</title>
+<link rel="stylesheet" href="/css/app.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><g fill='none' stroke='%235b9dff' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'><circle cx='8' cy='7' r='3'/><circle cx='8' cy='25' r='3'/><circle cx='24' cy='14' r='3'/><path d='M8 10v12'/><path d='M8 17c0-4 4-3 10-3'/></g></svg>">
+</head>
+<body>
+<header data-nav></header>
+
+<main class="wrap">
+  <div class="section-head" style="margin-top:32px">
+    <h1 style="margin:0">Playground</h1>
+    <span class="sub">A workbench. Nothing is graded and nothing is recorded.</span>
+  </div>
+
+  <div id="context" class="call-note" style="margin-bottom:16px"></div>
+
+  <div class="card">
+    <div class="row" style="margin-bottom:10px">
+      <strong>Your commands</strong>
+      <span class="spacer"></span>
+      <span style="color:var(--text-faint);font-size:.8125rem">
+        Ctrl + Enter to run
+      </span>
+    </div>
+    <div class="editor-shell">
+      <div class="editor-bar">
+        <span>scratch.sh</span>
+        <span class="spacer"></span>
+        <span>One command per line, run with sh</span>
+      </div>
+      <textarea id="editor" class="code-editor" style="min-height:220px"
+        spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off"
+>git status
+git log --oneline
+git branch -a</textarea>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button id="run" class="btn-primary">Run</button>
+      <span style="color:var(--text-faint);font-size:.8125rem">
+        The repository is thrown away afterwards, whatever you do to it.
+      </span>
+    </div>
+  </div>
+
+  <div id="results" style="margin-top:18px"></div>
+
+  <footer data-footer></footer>
+</main>
+
+<script type="module">
+import { api } from '/js/api.js';
+import { mountNav, mountFooter, enhanceEditor } from '/js/layout.js';
+import { renderRun, banner } from '/js/results.js';
+import { el, mount, $ } from '/js/dom.js';
+
+mountNav();
+mountFooter();
+
+const editor = $('#editor');
+const results = $('#results');
+const runBtn = $('#run');
+const context = $('#context');
+
+// The playground can start from an exercise's repository, so a learner can
+// explore the exact repository an exercise is about without guessing what
+// it contains.
+const exerciseId = new URLSearchParams(location.search).get('exercise');
+
+if (exerciseId) {
+  mount(context, [
+    el('strong', {}, 'Started from an exercise. '),
+    'This repository is the one ',
+    el('a', { href: `/exercise.html?id=${encodeURIComponent(exerciseId)}`, text: 'that exercise' }),
+    ' begins with. The commands you write here are never graded.',
+  ]);
+} else {
+  mount(context, [
+    el('strong', {}, 'A small project with one commit. '),
+    'Try `git status`, `git log --oneline`, then change a file and look at `git diff`.',
+  ]);
+}
+
+async function run() {
+  const label = runBtn.textContent;
+  runBtn.disabled = true;
+  runBtn.textContent = 'Running...';
+  mount(results, el('div', { class: 'empty' }, [el('span', { class: 'spinner' }), ' Running...']));
+  try {
+    const result = await api.playground(editor.value, exerciseId);
+    mount(results, renderRun(result));
+  } catch (error) {
+    mount(results, banner('error', error.message));
+  } finally {
+    runBtn.disabled = false;
+    runBtn.textContent = label;
+  }
+}
+
+runBtn.addEventListener('click', run);
+enhanceEditor(editor, run, null);
+</script>
+</body>
+</html>

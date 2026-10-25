@@ -1,0 +1,1655 @@
+id: advanced
+title: Advanced
+description: >-
+  The parts of git that are meant for programs rather than for people:
+  plumbing commands, bisecting, worktrees, hooks, and the tools that get
+  your work back when something goes wrong. Come here once you are
+  comfortable with staging, committing, merging and rebasing.
+difficulty: advanced
+order: 3
+lessons:
+  - id: a-plumbing
+    title: Plumbing commands
+    summary: The commands underneath the porcelain, and why their output never changes.
+    body: |
+      # Plumbing commands
+
+      Everything you have used so far is **porcelain**: `git status`,
+      `git log`, `git add`. Porcelain is written for people -- it prints
+      colours, adds summary lines, and its wording may change between
+      releases. Underneath it is **plumbing**: commands that talk to the
+      object database directly. Plumbing has one rule.
+
+      > **Callout**
+      > Plumbing output is stable. A script that reads `git cat-file` will
+      > still work in ten years. A script that reads `git status` will not.
+
+      ```bash
+      git cat-file -t HEAD        # commit
+      git cat-file -p HEAD        # the commit object itself
+      git cat-file -s HEAD        # its size in bytes
+      ```
+
+      ## The four kinds of object
+
+      | Type | What it holds | Made by |
+      | --- | --- | --- |
+      | `blob` | the contents of one file | `git hash-object` |
+      | `tree` | a directory: names and object ids | `git mktree` |
+      | `commit` | a snapshot, a parent, a message | `git commit-tree` |
+      | `tag` | a name for an object, plus a message | `git mktag` |
+
+      `git cat-file -t <object>` prints which one you are holding. The
+      object can be named by a hash, by a ref, or by a path inside a
+      commit: `HEAD:app.py` is the blob of `app.py` in the commit `HEAD`.
+
+      ```bash
+      git rev-parse HEAD       # the id of the commit HEAD points at
+      git rev-parse HEAD~2     # its grandparent
+      ```
+
+      ## Reading a commit's tree
+
+      ```bash
+      git ls-tree -r --name-only HEAD   # the files in the commit
+      git ls-files                      # the files in the staging area
+      ```
+
+      Those are different questions: `ls-tree` reads what was committed,
+      `ls-files` reads what is staged.
+
+      ## Writing objects yourself
+
+      ```bash
+      blob=$(printf 'handmade\n' | git hash-object -w --stdin)
+      tree=$(printf '100644 blob %s\tREADME.md\n' "$blob" | git mktree)
+      commit=$(git commit-tree "$tree" -p HEAD -m "Handmade commit")
+      git update-ref refs/heads/handmade "$commit"
+      ```
+
+      Four commands, and they are the whole of `git add` and `git commit`
+      with the covers off: write a blob, build a tree out of it, build a
+      commit that points at the tree and at a parent, then move a ref
+      onto it. `git update-ref` is what sits behind `git branch`, `git
+      tag` and `git reset`.
+    exercises:
+      - id: a-plumbing-cat-file
+        title: Ask what an object is
+        prompt: |
+          The last commit in this repository is an object in git's
+          database, like everything else git stores.
+
+          Write a script that prints two lines:
+
+          1. the **type** of the object `HEAD` points at;
+          2. the **size in bytes** of the blob stored at `app.py` in that
+             commit.
+
+          Use `git cat-file` for both.
+        kind: cli
+        starter: |
+          # Write your commands here, one per line.
+        solution: |
+          git cat-file -t HEAD
+          git cat-file -s HEAD:app.py
+        seed:
+          files:
+            README.md: |
+              # demo
+            app.py: |
+              print("hello")
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+        checks:
+          - name: the script prints the type and the size
+            kind: output
+        hints:
+          - |
+            `git cat-file -t <object>` prints the type: `commit`, `tree`,
+            `blob` or `tag`.
+          - |
+            A path inside a commit is written `HEAD:app.py`, the same way
+            `HEAD~2` names a commit.
+          - |
+            `git cat-file -s <object>` prints the size of the object in
+            bytes.
+        teach: |
+          Everything in a git repository -- every file you have ever
+          committed, every directory, every commit -- is stored as an
+          object, and each object has exactly one of the four types.
+          `cat-file -t` is how you ask which.
+
+          The `HEAD:app.py` syntax is the important half. Git resolves
+          `HEAD` to a commit, finds the tree inside it, finds the entry
+          for `app.py` in that tree, and hands you the blob. It reads
+          the committed version of the file without checking anything
+          out, which is why it works even when your working tree holds a
+          different version.
+
+          The size is the size of the *object*, not of the file on disk.
+          For a blob those are the same thing, because git stores the
+          contents with a header.
+        tags: [plumbing]
+      - id: a-plumbing-ls-tree
+        title: List a commit's tree
+        prompt: |
+          This repository has three files. Two of them were committed; the
+          third, `new.txt`, is in the staging area but is not in any
+          commit.
+
+          Print the paths of the files that are in the **last commit** --
+          one per line, and nothing else. `new.txt` must not appear.
+
+          Read the commit's tree with plumbing, not the index.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git ls-tree -r --name-only HEAD
+        seed:
+          files:
+            README.md: |
+              # demo
+            app.py: |
+              print("hello")
+            new.txt: |
+              not committed yet
+          commands:
+            - git add README.md app.py
+            - git commit -m "Initial commit"
+            - git add new.txt
+        checks:
+          - name: the script prints the files in the commit
+            kind: output
+        hints:
+          - |
+            `git ls-tree` reads a tree object. `HEAD` names the commit,
+            and the tree inside that commit is what you want.
+          - |
+            Without `-r` you get the top level only; with `-r` git walks
+            into every subdirectory.
+          - |
+            `git ls-files` would answer a different question. It lists
+            the staging area, which includes `new.txt`.
+        teach: |
+          A commit does not store a list of changed files. It stores a
+          *tree*: a snapshot of every path in the project, each pointing
+          at a blob. `git ls-tree` prints that tree.
+
+          This is why `ls-tree` and `ls-files` disagree here. The
+          staging area holds three files; the commit holds two. Git is
+          not confused -- it is answering two different questions, and
+          `HEAD:new.txt` would fail because no such entry exists in the
+          committed tree.
+
+          `-r` matters as soon as a project has directories: without it
+          git prints the tree entries at the top level, which are
+          directories rather than files.
+        tags: [plumbing, staging]
+      - id: a-plumbing-for-each-ref
+        title: List the branches yourself
+        prompt: |
+          This repository has two branches. Print one line for each of
+          them:
+
+          the branch's short name, a single space, then the subject of
+          the commit it points at.
+
+          Use `git for-each-ref` with a format string. The porcelain
+          `git branch` cannot do this.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git for-each-ref --format='%(refname:short) %(subject)' refs/heads
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+            - git branch feature
+            - printf 'print("hello")\n' > app.py
+            - git add app.py
+            - git commit -m "Add the app"
+        checks:
+          - name: the script prints a line for each branch
+            kind: output
+        hints:
+          - |
+            `for-each-ref` walks the refs and prints one line per ref,
+            using the format string you give it.
+          - |
+            `%(refname:short)` is the name without the `refs/heads/`
+            prefix, and `%(subject)` is the first line of the commit's
+            message.
+          - |
+            The pattern `refs/heads` limits the walk to local branches.
+            Without it you would also get the remote-tracking branches.
+        teach: |
+          `git for-each-ref` is the plumbing behind `git branch`,
+          `git tag` and `git remote`. It walks the reference database and
+          prints one line per ref, and the format string says what each
+          line contains.
+
+          The placeholders are the interesting part. `%(` opens one and
+          `)` closes it, and inside there is a name: `refname`,
+          `refname:short`, `objecttype`, `objectname`, `subject`,
+          `contents:subject`, `upstream`, and many more. `git for-each-ref
+          --format='%(help)'` lists them all.
+
+          Walking `refs/heads` alone gives local branches. Walking
+          `refs` gives every ref in the repository -- branches, tags,
+          remote-tracking branches and anything else you have created --
+          which is usually what a report over the whole repository wants.
+        tags: [plumbing, branches]
+      - id: a-plumbing-build-a-commit
+        title: Build a commit by hand
+        prompt: |
+          Build a commit with plumbing and put it on a branch called
+          `handmade`.
+
+          The commit's tree must contain exactly one file, `README.md`,
+          whose contents are the single line `handmade`.
+
+          The commit's message must be `Handmade commit`, and its parent
+          must be the current `HEAD`.
+        kind: cli
+        starter: |
+          # Write your commands here, one per line.
+        solution: |
+          blob=$(printf 'handmade\n' | git hash-object -w --stdin)
+          tree=$(printf '100644 blob %s\tREADME.md\n' "$blob" | git mktree)
+          commit=$(git commit-tree "$tree" -p HEAD -m "Handmade commit")
+          git update-ref refs/heads/handmade "$commit"
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+        checks:
+          - name: the branch points at the new commit
+            kind: command
+            command: git log -1 --format=%s handmade
+          - name: the commit's tree holds one file
+            kind: command
+            command: git ls-tree -r --name-only handmade
+          - name: the file has the right contents
+            kind: command
+            command: git cat-file -p handmade:README.md
+          - name: the commit has the old history behind it
+            kind: command
+            command: git rev-list --count handmade
+        hints:
+          - |
+            `git hash-object -w --stdin` writes a blob into the object
+            database and prints its id.
+          - |
+            `git mktree` reads a tree in the format
+            `<mode> SP <type> SP <id> TAB <path>`, one entry per line.
+          - |
+            `git commit-tree <tree> -p <parent> -m "<message>"` writes the
+            commit, and `git update-ref <ref> <commit>` moves a ref onto
+            it.
+        teach: |
+          This is the plumbing path, and it is worth doing once by hand
+          to see what the porcelain commands are actually doing. `git add`
+          writes a blob and updates the index; `git commit` writes a
+          tree, writes a commit that points at the tree and at the
+          previous commit, and moves the branch.
+
+          `git mktree` reads its input in a very specific format: a
+          mode, a type, the object's id, and then a **tab** before the
+          path. The mode is `100644` for an ordinary file and `100755`
+          for an executable one -- the only permission git records.
+
+          `git commit-tree` does not move any branch. It writes an
+          object and prints its id, and the commit is unreachable until
+          something points at it. `git update-ref` is what points at it,
+          and it is the same machinery behind `git branch`, `git tag` and
+          `git reset`.
+        tags: [plumbing, commit]
+  - id: a-bisect
+    title: Bisecting
+    summary: Finding the commit that broke something, by halving the history.
+    body: |
+      # Bisecting
+
+      Something worked yesterday and does not work today. Somewhere
+      between the two is a commit that broke it. `git bisect` finds that
+      commit for you.
+
+      The trick is that you do not have to test every commit. Git knows
+      the shape of the history, so if you tell it which end is good and
+      which end is bad, it can skip half the commits, then half of what
+      is left, and so on.
+
+      ```bash
+      git bisect start              # begin
+      git bisect bad HEAD           # the current commit is broken
+      git bisect good v1.0          # this tag still worked
+      git bisect reset              # give up and go back
+      ```
+
+      After each `good` or `bad`, git checks out a commit for you to
+      test. When it has narrowed the range to a single commit, it tells
+      you which one broke the build.
+
+      ## Letting a script do the testing
+
+      ```bash
+      git bisect run ./check.sh
+      ```
+
+      `git bisect run` executes a command at each candidate commit. The
+      convention is the same as for any test:
+
+      | Exit code | Meaning |
+      | --- | --- |
+      | 0 | good -- this commit works |
+      | 1 to 127 | bad -- this commit is broken |
+      | 125 | skip -- this commit cannot be tested |
+
+      Any other exit code (128, for instance) stops the bisect
+      immediately, because git cannot tell what it means.
+
+      ## Where to start
+
+      You need a commit that is known to be good. The oldest commit in
+      the history is always a safe bet:
+
+      ```bash
+      git rev-list --max-parents=0 HEAD
+      ```
+
+      That prints the root commit -- the one with no parents.
+
+      ## Cleaning up
+
+      A bisect leaves `HEAD` detached and the repository full of
+      `refs/bisect/*` records. `git bisect reset` puts everything back
+      exactly as it was, and `git bisect log` shows the session you ran.
+    exercises:
+      - id: a-bisect-run
+        title: Let a script do the bisect
+        prompt: |
+          This repository has a script called `check.sh`. It exits 0 when
+          the code is working and 1 when it is broken -- the rule is in
+          the script.
+
+          Somewhere in the recent history, a commit broke it. Find that
+          commit with `git bisect`, using `git bisect run` to test each
+          candidate for you, and then create a branch called `culprit`
+          pointing at the commit you found.
+        kind: cli
+        starter: |
+          # Write your commands here, one per line.
+        solution: |
+          git bisect start
+          git bisect bad HEAD
+          git bisect good $(git rev-list --max-parents=0 HEAD)
+          git bisect run ./check.sh
+          git branch culprit refs/bisect/bad
+        seed:
+          files:
+            README.md: |
+              # demo
+            check.sh: |
+              #!/bin/sh
+              # Exit 0 if the build is good, 1 if it is broken.
+              value=$(cat value.txt 2>/dev/null || echo 0)
+              if [ "$value" -ge 5 ]; then
+                exit 1
+              fi
+              exit 0
+          commands:
+            - chmod +x check.sh
+            - git add .
+            - git commit -m "Initial commit"
+            - printf '1\n' > value.txt
+            - git add value.txt
+            - git commit -m "Set value to 1"
+            - printf '2\n' > value.txt
+            - git add value.txt
+            - git commit -m "Set value to 2"
+            - printf '3\n' > value.txt
+            - git add value.txt
+            - git commit -m "Set value to 3"
+            - printf '4\n' > value.txt
+            - git add value.txt
+            - git commit -m "Set value to 4"
+            - printf '5\n' > value.txt
+            - git add value.txt
+            - git commit -m "Set value to 5"
+            - printf '6\n' > value.txt
+            - git add value.txt
+            - git commit -m "Set value to 6"
+        checks:
+          - name: the branch points at the first bad commit
+            kind: command
+            command: git log -1 --format=%s culprit
+          - name: the bad commit is the one that set the value to 5
+            kind: command
+            command: git show culprit:value.txt
+          - name: the history was not rewritten
+            kind: command
+            command: git rev-list --count main
+        hints:
+          - |
+            `git bisect start` begins a bisect. Then tell git what you
+            know. `git bisect bad HEAD` marks the broken end, and
+            `git bisect good <ref>` marks the working end.
+          - |
+            You do not need a hash for the working end. The oldest
+            commit in the history is `$(git rev-list --max-parents=0
+            HEAD)`.
+          - |
+            `git bisect run ./check.sh` tests one candidate after
+            another, and while it runs git keeps the commit it thinks is
+            bad in `refs/bisect/bad` -- so `git branch culprit
+            refs/bisect/bad` is all you need to keep the answer.
+        teach: |
+          A bisect is a search over a *range* of commits, and it is only
+          as good as the two ends you give it. `git bisect bad HEAD`
+          says "the tip is broken"; `git bisect good <ref>` says "this
+          one still worked". Git then knows the bug is somewhere between
+          them, and it tests the middle.
+
+          `git bisect run` is what makes this practical. Your script is
+          the test, and its exit code is the verdict. Git checks out each
+          candidate, runs the script, reads the exit code, and moves on.
+          Seven commits become three tests.
+
+          Note that the script is read from the working tree at each
+          step, which is why it has to be committed: the bisect checks
+          out old commits, and a script that only existed in the working
+          tree would vanish at the first checkout.
+
+          While the bisect is running, git keeps its state in
+          `refs/bisect/bad` and `refs/bisect/good-*`. `refs/bisect/bad`
+          is the answer, and it is still there after the run finishes --
+          which is how you keep it.
+        tags: [bisect, history]
+      - id: a-bisect-manual
+        title: Bisect by hand
+        prompt: |
+          The same repository and the same bug, but this time do the
+          bisect yourself, one commit at a time, without `git bisect run`.
+
+          Start the bisect, mark the current commit as bad and the
+          oldest commit as good, then look at each commit git checks out
+          and mark it good or bad until git tells you the first bad
+          commit.
+
+          Then create a branch called `culprit` pointing at it.
+        kind: cli
+        starter: |
+          # Write your commands here, one per line.
+        solution: |
+          git bisect start HEAD $(git rev-list --max-parents=0 HEAD)
+          git bisect good
+          git bisect bad
+          git bisect good
+          git branch culprit refs/bisect/bad
+        seed:
+          files:
+            README.md: |
+              # demo
+            check.sh: |
+              #!/bin/sh
+              # Exit 0 if the build is good, 1 if it is broken.
+              value=$(cat value.txt 2>/dev/null || echo 0)
+              if [ "$value" -ge 5 ]; then
+                exit 1
+              fi
+              exit 0
+          commands:
+            - chmod +x check.sh
+            - git add .
+            - git commit -m "Initial commit"
+            - printf '1\n' > value.txt
+            - git add value.txt
+            - git commit -m "Set value to 1"
+            - printf '2\n' > value.txt
+            - git add value.txt
+            - git commit -m "Set value to 2"
+            - printf '3\n' > value.txt
+            - git add value.txt
+            - git commit -m "Set value to 3"
+            - printf '4\n' > value.txt
+            - git add value.txt
+            - git commit -m "Set value to 4"
+            - printf '5\n' > value.txt
+            - git add value.txt
+            - git commit -m "Set value to 5"
+            - printf '6\n' > value.txt
+            - git add value.txt
+            - git commit -m "Set value to 6"
+        checks:
+          - name: the branch points at the first bad commit
+            kind: command
+            command: git log -1 --format=%s culprit
+          - name: the bad commit is the one that set the value to 5
+            kind: command
+            command: git show culprit:value.txt
+        hints:
+          - |
+            `git bisect start <bad> <good>` takes both ends in one
+            command.
+          - |
+            After that, git checks out a commit for you to test.
+            `git bisect good` with no argument marks the commit that is
+            checked out right now; `git bisect bad` gives the other
+            verdict.
+          - |
+            The number in `value.txt` tells you which verdict applies:
+            5 and above is broken. When git has the answer it prints "is
+            the first bad commit" and stops.
+        teach: |
+          A manual bisect is the same search, with you in the place of
+          the test script. Git narrows the range, you look at the commit
+          it checked out, and you give the verdict.
+
+          Reading the file at each step is the whole skill. The commit
+          that set the value to 5 is the first one where the build
+          breaks, and the commit before it is the last one where it
+          worked -- so the answer is the commit that introduced the
+          change, not the commit that made it worse.
+
+          `git bisect good` with no argument means "the commit I am
+          looking at right now". With an argument it means "this
+          particular commit", which is how you can mark a commit
+          without checking it out.
+
+          The bisect is a search, not a rewrite: the history is never
+          changed. `git bisect reset` afterwards, and the branch is
+          exactly where you left it.
+        tags: [bisect, history]
+      - id: a-bisect-reset
+        title: End the bisect
+        prompt: |
+          You are in the middle of a bisect. Git has detached `HEAD` and
+          checked out a commit for you to test.
+
+          End the bisect and put everything back the way it was: on the
+          branch `main`, at the commit it was pointing at when the
+          bisect started. The bisect's own records must be gone.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git bisect reset
+        seed:
+          files:
+            README.md: |
+              # demo
+            value.txt: |
+              1
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+            - printf '2\n' > value.txt
+            - git add value.txt
+            - git commit -m "Set value to 2"
+            - printf '3\n' > value.txt
+            - git add value.txt
+            - git commit -m "Set value to 3"
+            - printf '4\n' > value.txt
+            - git add value.txt
+            - git commit -m "Set value to 4"
+            - git bisect start
+            - git bisect bad HEAD
+            - git bisect good $(git rev-list --max-parents=0 HEAD)
+        checks:
+          - name: the branch is main again
+            kind: command
+            command: git symbolic-ref --short HEAD
+          - name: the branch is back at its original commit
+            kind: command
+            command: git log -1 --format=%s
+          - name: the bisect records are gone
+            kind: command
+            command: git show-ref --verify --quiet refs/bisect/bad
+        hints:
+          - |
+            `git bisect reset` ends a bisect and puts you back exactly
+            where you started: on your branch, at its original commit.
+          - |
+            `git symbolic-ref --short HEAD` prints the branch `HEAD`
+            points at, and fails while `HEAD` is detached.
+          - |
+            `git show-ref --verify --quiet <ref>` exits 0 when the ref
+            exists and 1 when it does not, which is what "the records
+            are gone" looks like.
+        teach: |
+          A bisect moves `HEAD` off your branch and onto whatever commit
+          it wants you to test, which is why `git symbolic-ref` fails
+          while it is running. It also writes its own refs under
+          `refs/bisect/`, so that the session survives between commands.
+
+          `git bisect reset` undoes all of that: it puts `HEAD` back on
+          the branch it came from, at the commit it started at, and
+          removes the `refs/bisect/*` records. It is the right way to
+          abandon a bisect that has gone wrong.
+
+          `git bisect log` is the other half of the story. It prints the
+          whole session -- every commit you marked and every command you
+          ran -- which is worth reading before you reset, because it is
+          often the fastest way to see that you marked the wrong end.
+        tags: [bisect, history]
+  - id: a-worktrees
+    title: Worktrees
+    summary: Two working directories, one repository.
+    body: |
+      # Worktrees
+
+      A worktree is a second working directory for the same repository.
+      The `.git` directory holds the objects, the refs and the index; the
+      working tree is just a view onto it. Nothing stops you having more
+      than one view.
+
+      ```bash
+      git worktree add ../feature feature   # a worktree for a branch
+      git worktree add -b hotfix ../hotfix  # ... and a new branch too
+      git worktree list                      # where they all are
+      git worktree remove ../feature         # take one away
+      ```
+
+      `git worktree list` prints one line per working directory: the
+      path, the commit it is on, and the branch in brackets.
+
+      ## One branch, one working tree
+
+      > **Callout**
+      > The same branch cannot be checked out in two worktrees at once.
+      > Git refuses with "already used by worktree at ...", because two
+      > working directories on one branch would fight over the index.
+
+      `git branch` marks a branch that is checked out somewhere else
+      with a `+` instead of a `*`, so you can see where things are.
+
+      ## What is shared and what is not
+
+      | Shared | Not shared |
+      | --- | --- |
+      | the object database | the working directory |
+      | every branch and tag | the index |
+      | the reflog | `HEAD` |
+
+      A commit made in one worktree is visible from all of them,
+      immediately, because the branch it moved lives in the shared
+      repository. That is the reason to use a worktree at all: you can
+      have a release branch checked out on one screen while you work on
+      a fix in another, without stashing anything.
+    exercises:
+      - id: a-worktrees-add
+        title: Add a second working tree
+        prompt: |
+          This repository has a branch called `feature` that is not
+          checked out anywhere.
+
+          Add a **worktree** for it at `../feature` -- a second working
+          directory for the same repository -- with `feature` checked out
+          in it.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git worktree add ../feature feature
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+            - printf 'feature work\n' > feature.txt
+            - git add feature.txt
+            - git commit -m "Add the feature"
+            - git branch feature
+            - git reset --hard HEAD~1
+        checks:
+          - name: there are two working trees
+            kind: command
+            command: git worktree list
+          - name: the new worktree is on the feature branch
+            kind: command
+            command: git -C ../feature branch --show-current
+          - name: the new worktree has the branch's history
+            kind: command
+            command: git -C ../feature log -1 --format=%s
+        hints:
+          - |
+            `git worktree add <path> <branch>` creates the directory,
+            checks the branch out in it, and records it.
+          - |
+            The path is relative to where you are now, so `../feature`
+            is next door rather than inside the repository.
+          - |
+            `git -C <path> <command>` runs a git command with a
+            different working directory.
+        teach: |
+          The worktree's directory holds an ordinary working tree --
+          files, an index, a `HEAD` -- but its `.git` is a *file*, not a
+          directory, pointing back at the real repository. That is the
+          whole trick: two directories, one set of objects and refs.
+
+          `git worktree list` is the command to remember. It shows every
+          working directory, the commit it is on, and the branch -- and
+          it is the quickest way to answer "which worktree is that?".
+
+          Because the objects are shared, adding a worktree is cheap. It
+          checks out files, and that is all; no history is copied.
+        tags: [worktrees, branches]
+      - id: a-worktrees-new-branch
+        title: Add a worktree with a new branch
+        prompt: |
+          Add a worktree at `../hotfix` that checks out a **new** branch
+          called `hotfix`, created at the same time.
+
+          The branch must not exist yet -- you are creating it, not
+          checking out an existing one.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git worktree add -b hotfix ../hotfix
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+        checks:
+          - name: there are two working trees
+            kind: command
+            command: git worktree list
+          - name: the new worktree is on the hotfix branch
+            kind: command
+            command: git -C ../hotfix branch --show-current
+          - name: git knows the branch is checked out elsewhere
+            kind: command
+            command: git branch
+        hints:
+          - |
+            `git worktree add -b <branch> <path>` creates the branch as
+            part of adding the worktree.
+          - |
+            `git branch` marks a branch that is checked out in another
+            worktree with a `+` instead of a `*`.
+          - |
+            The same branch cannot be checked out in two worktrees at
+            once. Git refuses with "already used by worktree at ...".
+        teach: |
+          `-b` is the plumbing's answer to the question "where do I put
+          this branch?". Without it, `git worktree add` insists on
+          checking out a branch that already exists, and the two-step
+          version -- `git branch hotfix` and then
+          `git worktree add ../hotfix hotfix` -- does the same job.
+
+          The `+` marker in `git branch` is worth knowing about. A `*`
+          means "checked out here"; a `+` means "checked out in another
+          worktree of this repository". It is the fastest way to find
+          out why `git checkout` refused.
+
+          Git enforces one branch per worktree because the index and the
+          working directory would otherwise be shared by two directories,
+          and they would overwrite each other's changes.
+        tags: [worktrees, branches]
+      - id: a-worktrees-shared
+        title: Work in one worktree, see it in the other
+        prompt: |
+          Add a worktree at `../feature` with a new branch `feature`
+          checked out in it.
+
+          In that worktree, create a file called `feature.txt`
+          containing the single line `feature work`, commit it with the
+          message `Add the feature work`, and leave the branch `feature`
+          pointing at the new commit.
+        kind: cli
+        starter: |
+          # Write your commands here, one per line.
+        solution: |
+          git worktree add -b feature ../feature
+          printf 'feature work\n' > ../feature/feature.txt
+          git -C ../feature add feature.txt
+          git -C ../feature commit -m "Add the feature work"
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+        checks:
+          - name: the branch has the new commit
+            kind: command
+            command: git log -1 --format=%s feature
+          - name: the commit contains the file
+            kind: command
+            command: git ls-tree -r --name-only feature
+          - name: the file has the right contents
+            kind: command
+            command: git show feature:feature.txt
+        hints:
+          - |
+            `git -C <path> <command>` runs a git command with a
+            different working directory.
+          - |
+            A worktree has its own working directory, so the file goes
+            inside `../feature`, not in the directory you started in.
+          - |
+            The branch lives in the shared repository, so the main
+            worktree can see the commit even though it was made in the
+            other one.
+        teach: |
+          This is the reason worktrees exist. The commit was made in
+          `../feature`, but the branch it moved belongs to the shared
+          repository -- so `git log feature` works in the original
+          directory immediately, with no fetch, no push and no merge.
+
+          The worktree's own index is what keeps the two directories
+          independent. Each has its own staging area and its own
+          `HEAD`, so you can have a half-finished change staged in one
+          while you commit something else in the other.
+
+          It is the answer to "I need to look at the old release
+          without disturbing what I am doing". Instead of stashing,
+          switching branches, and switching back, you open another
+          directory.
+        tags: [worktrees, branches]
+      - id: a-worktrees-remove
+        title: Remove a worktree
+        prompt: |
+          This repository has a second worktree at `../feature`, with the
+          branch `feature` checked out in it.
+
+          Remove that worktree. The branch `feature` itself must stay --
+          only the second working directory goes away.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git worktree remove ../feature
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+            - git branch feature
+            - git worktree add ../feature feature
+        checks:
+          - name: there is only one working tree left
+            kind: command
+            command: git worktree list
+          - name: the branch is still there
+            kind: command
+            command: git branch
+          - name: the directory is gone
+            kind: command
+            command: test ! -d ../feature
+        hints:
+          - |
+            `git worktree remove <path>` removes a working directory and
+            the administrative records git kept for it.
+          - |
+            `git worktree list` shows what is left, and `git branch`
+            shows which branches are still checked out somewhere.
+          - |
+            Removing a worktree does not delete the branch it had checked
+            out.
+        teach: |
+          `git worktree remove` deletes the directory and the
+          administrative files under `.git/worktrees/`, which are the
+          bookkeeping that told git the branch was in use.
+
+          It refuses if the worktree has uncommitted changes, which is
+          the same politeness `git branch -d` shows towards an unmerged
+          branch. `--force` overrides it, and throws the changes away.
+
+          The branch survives. A branch is a name in the shared
+          repository; a worktree is a directory that happens to have it
+          checked out. Deleting the directory does not delete the name.
+        tags: [worktrees, branches]
+  - id: a-hooks
+    title: Hooks
+    summary: Programs git runs for you, and the ones it does not.
+    body: |
+      # Hooks
+
+      A hook is a script git runs at a particular moment. Some of them
+      can refuse to continue.
+
+      ```bash
+      git rev-parse --git-dir     # .git
+      ls .git/hooks               # the samples git ships with
+      ```
+
+      The hooks that ship with git are all named `*.sample`, so they do
+      nothing until you remove the suffix.
+
+      ## The ones worth knowing
+
+      | Hook | When it runs | Can it stop the commit? |
+      | --- | --- | --- |
+      | `pre-commit` | after staging, before the commit | yes |
+      | `commit-msg` | after the message is written | yes |
+      | `prepare-commit-msg` | before the editor opens | yes |
+      | `post-commit` | after the commit | no |
+      | `pre-push` | before a push | yes |
+      | `post-merge` | after a merge | no |
+
+      A hook refuses by exiting with a non-zero status. Git then aborts
+      what it was doing and prints the hook's own message, so the hook
+      should explain itself.
+
+      ## The catch
+
+      > **Callout**
+      > Hooks live in `.git/`, and `.git/` is not part of any commit.
+      > Nobody who clones your repository gets your hooks.
+
+      A hook is a local, personal setting. Sharing one means putting it
+      in the repository yourself and arranging for it to be installed:
+
+      ```bash
+      mkdir -p hooks && cp .git/hooks/pre-commit hooks/pre-commit
+      git add hooks/pre-commit
+      git config core.hooksPath hooks
+      ```
+
+      ## Skipping a hook
+
+      ```bash
+      git commit --no-verify -m "..."
+      ```
+
+      `--no-verify` skips `pre-commit` and `commit-msg`. It is a last
+      resort: read what the hook is complaining about first.
+    exercises:
+      - id: a-hooks-pre-commit
+        title: A hook that refuses
+        prompt: |
+          This repository has a `pre-commit` hook in `.git/hooks/`. It
+          refuses any commit that stages a file called `secrets.txt`.
+
+          Create `secrets.txt`, stage it, and try to commit it with the
+          message `Add the secrets`.
+
+          The commit must be **refused**: the history must not grow, and
+          `secrets.txt` must still be in the staging area afterwards.
+        kind: cli
+        starter: |
+          # Write your commands here, one per line.
+        solution: |
+          printf 'hunter2\n' > secrets.txt
+          git add secrets.txt
+          git commit -m "Add the secrets"
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+            - |
+              cat > .git/hooks/pre-commit <<'HOOK'
+              #!/bin/sh
+              # Refuse to commit a file called secrets.txt.
+              if git diff --cached --name-only | grep -q '^secrets\.txt$'; then
+                echo "secrets.txt must never be committed" >&2
+                exit 1
+              fi
+              exit 0
+              HOOK
+              chmod +x .git/hooks/pre-commit
+        checks:
+          - name: no commit was made
+            kind: command
+            command: git rev-list --count HEAD
+          - name: the file is still staged
+            kind: state
+            select: status
+          - name: the index knows about the file
+            kind: command
+            command: git ls-files
+        hints:
+          - |
+            A `pre-commit` hook runs after you stage and before the
+            commit is written. If it exits non-zero, git abandons the
+            commit and prints the hook's message.
+          - |
+            The hook cannot unstage anything, so the file you staged
+            stays in the staging area.
+          - |
+            `git status --porcelain` shows a staged new file as
+            `A  secrets.txt`: two characters, the first for the index
+            and the second for the working tree.
+        teach: |
+          `pre-commit` is the hook that runs between "the index is
+          ready" and "the commit exists". The hook this repository has
+          looks at the list of staged paths and refuses one of them by
+          exiting 1.
+
+          Git treats a non-zero exit from a hook as "no": the commit is
+          not written, `HEAD` does not move, and the message the hook
+          printed is shown to you. Nothing is lost, because the index was
+          never touched.
+
+          That is why the file is still staged afterwards. A hook can
+          *refuse*; it cannot undo what you staged. If you want the
+          change gone as well, that is a separate `git restore --staged`.
+
+          A hook is a plain program. It runs from the top of the working
+          tree, with the index already prepared, which is why this one
+          can ask git what is staged.
+        tags: [hooks, staging]
+      - id: a-hooks-no-verify
+        title: Skip the hook
+        prompt: |
+          The same repository and the same hook: it refuses any commit
+          that stages `secrets.txt`.
+
+          This time, commit `secrets.txt` anyway, with the message
+          `Add the secrets`. Bypassing a hook is deliberate, so git
+          gives you a way to say so.
+        kind: cli
+        starter: |
+          # Write your commands here, one per line.
+        solution: |
+          printf 'hunter2\n' > secrets.txt
+          git add secrets.txt
+          git commit --no-verify -m "Add the secrets"
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+            - |
+              cat > .git/hooks/pre-commit <<'HOOK'
+              #!/bin/sh
+              # Refuse to commit a file called secrets.txt.
+              if git diff --cached --name-only | grep -q '^secrets\.txt$'; then
+                echo "secrets.txt must never be committed" >&2
+                exit 1
+              fi
+              exit 0
+              HOOK
+              chmod +x .git/hooks/pre-commit
+        checks:
+          - name: the commit exists
+            kind: command
+            command: git log -1 --format=%s
+          - name: the history grew by one
+            kind: command
+            command: git rev-list --count HEAD
+          - name: the file is tracked now
+            kind: command
+            command: git ls-files
+        hints:
+          - |
+            `--no-verify` tells git to skip the `pre-commit` and
+            `commit-msg` hooks for this one commit.
+          - |
+            It is the last resort. A hook is usually there because
+            somebody got burned, so read what it is complaining about
+            first.
+        teach: |
+          `--no-verify` is the escape hatch, and it is deliberately
+          awkward to use: you have to know the flag, and it only applies
+          to the commit you are making now.
+
+          It exists for the genuine emergencies -- a hotfix that has to
+          go out in the next two minutes and a linter that is failing
+          for a reason that has nothing to do with your change. It is
+          not a way to make a failing check pass, because the check
+          will fail again on the next commit.
+
+          Note what the flag does *not* skip: `pre-commit` and
+          `commit-msg` are the two it covers. Hooks that run later, such
+          as `post-commit` and `pre-push`, are not skipped, and neither
+          is the server side of a push.
+        tags: [hooks, commit]
+      - id: a-hooks-commit-msg
+        title: A hook that reads the message
+        prompt: |
+          This repository has a `commit-msg` hook. It refuses any commit
+          message containing `WIP`, and when it refuses, it records the
+          refusal by writing the file `.git/hook-rejected`.
+
+          Stage `app.py`, try to commit it with the message `WIP: later`,
+          and then commit the same change properly with the message
+          `Add the app`.
+
+          When you are done the last commit must be `Add the app`, the
+          history must have grown by exactly one commit, and
+          `.git/hook-rejected` must exist.
+        kind: cli
+        starter: |
+          # Write your commands here, one per line.
+        solution: |
+          printf 'print("hello")\n' > app.py
+          git add app.py
+          git commit -m "WIP: later"
+          git commit -m "Add the app"
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+            - |
+              cat > .git/hooks/commit-msg <<'HOOK'
+              #!/bin/sh
+              # Refuse a message that mentions WIP, and leave a note that we did.
+              if grep -qi 'WIP' "$1"; then
+                echo "commit messages must not contain WIP" >&2
+                echo "the commit-msg hook refused a WIP message" > .git/hook-rejected
+                exit 1
+              fi
+              exit 0
+              HOOK
+              chmod +x .git/hooks/commit-msg
+        checks:
+          - name: the last commit is the good one
+            kind: command
+            command: git log -1 --format=%s
+          - name: the history grew by exactly one
+            kind: command
+            command: git rev-list --count HEAD
+          - name: the hook recorded the refusal
+            kind: command
+            command: test -f .git/hook-rejected
+        hints:
+          - |
+            A `commit-msg` hook runs after the message has been written
+            but before the commit is made. The message is in the file it
+            is given as its first argument.
+          - |
+            When the hook refuses, the change is still staged: the
+            commit did not happen, so nothing was lost.
+          - |
+            `test -f <path>` exits 0 when the file is there and 1 when
+            it is not.
+        teach: |
+          `commit-msg` runs a moment later than `pre-commit`, and it
+          runs for a different reason: it gets the file holding the
+          message you just wrote. That makes it the right place for
+          rules about *how* things are committed -- no "WIP", no
+          "fixed bug", a ticket number at the start.
+
+          The hook is given the path to the message file as its first
+          argument, and it may edit that file to change the message. If
+          it exits non-zero instead, git abandons the commit.
+
+          This hook also writes a file when it refuses, which is worth
+          noticing: a hook is an ordinary program, and it can do
+          anything a program can do. It can run a linter, send a
+          message to a chat room, or leave a note for you to find
+          later.
+
+          And the refused commit changed nothing: the file is still
+          staged, so the second commit picks up exactly the same
+          change.
+        tags: [hooks, commit]
+      - id: a-hooks-not-tracked
+        title: Hooks are not in the commit
+        prompt: |
+          Hooks live in `.git/`, and `.git/` is not part of any commit.
+          Nobody who clones this repository gets them.
+
+          Put this repository's `pre-commit` hook under version control:
+          copy it to `hooks/pre-commit` in the working tree, make sure it
+          is still executable, and stage it.
+        kind: cli
+        starter: |
+          # Write your commands here, one per line.
+        solution: |
+          mkdir -p hooks
+          cp .git/hooks/pre-commit hooks/pre-commit
+          chmod +x hooks/pre-commit
+          git add hooks/pre-commit
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+            - |
+              cat > .git/hooks/pre-commit <<'HOOK'
+              #!/bin/sh
+              # Refuse to commit a file called secrets.txt.
+              if git diff --cached --name-only | grep -q '^secrets\.txt$'; then
+                echo "secrets.txt must never be committed" >&2
+                exit 1
+              fi
+              exit 0
+              HOOK
+              chmod +x .git/hooks/pre-commit
+        checks:
+          - name: the hook is staged
+            kind: command
+            command: git ls-files
+          - name: the executable bit is recorded
+            kind: command
+            command: git ls-files -s hooks/pre-commit
+          - name: the working tree knows about it
+            kind: state
+            select: status
+        hints:
+          - |
+            `git ls-files -s` prints the mode as well as the name:
+            `100644` for an ordinary file, `100755` for an executable
+            one.
+          - |
+            Git records the executable bit and nothing else about
+            permissions, so `chmod +x` is the part that matters.
+          - |
+            Sharing a hook this way is half the job. Everybody also has
+            to install it, and `git config core.hooksPath hooks` is the
+            other half.
+        teach: |
+          `git ls-files -s` shows the index entry in full: the mode,
+          the object id, the stage, and the path. The mode is the
+          interesting part -- `100755` means git will check the file out
+          with the executable bit set on every machine that clones the
+          repository.
+
+          That is the whole of git's support for permissions. It records
+          whether a file was executable and ignores everything else, so
+          a hook that is staged this way arrives executable everywhere.
+
+          Staging the hook is only half the work. It has to be
+          *installed*, and that is a decision each person makes:
+          `git config core.hooksPath hooks` points git at the directory
+          inside the repository, and a small installer script can copy
+          the files into `.git/hooks`. Projects that want hooks for
+          everybody usually ship both.
+        tags: [hooks, staging]
+  - id: a-recovery-and-archives
+    title: Recovery and archives
+    summary: Getting lost work back, and taking it somewhere else.
+    body: |
+      # Recovery and archives
+
+      Git rarely loses work. It loses *references* to work -- a branch
+      that was deleted, a commit that was reset away -- and the objects
+      themselves usually survive for a while afterwards.
+
+      ## The reflog
+
+      ```bash
+      git reflog                 # everywhere HEAD has been
+      git reflog show main       # everywhere main has been
+      git reset --hard HEAD@{1}  # go back one entry
+      ```
+
+      Every time a ref moves, git writes a line to a log: where it was,
+      where it went, and why. `HEAD@{1}` is "where HEAD was one entry
+      ago", and it is usually still a commit you thought you had lost.
+
+      ## The object database
+
+      ```bash
+      git fsck --no-progress      # what cannot be reached?
+      git gc --prune=now          # throw the unreachable things away
+      ```
+
+      `git fsck` reports objects that nothing points at as `dangling`.
+      They are still there, and a branch can be created at one:
+
+      ```bash
+      git branch rescued <commit>
+      ```
+
+      `git gc` packs the reachable objects together and deletes the
+      unreachable ones -- but only after a grace period, two weeks by
+      default, because people change their minds. `--prune=now` skips
+      the wait.
+
+      ## Taking the history elsewhere
+
+      | Command | What you get |
+      | --- | --- |
+      | `git bundle create f.bundle --all` | a file with objects and refs |
+      | `git bundle verify f.bundle` | is it sound? |
+      | `git archive --format=tar HEAD` | the files, with no history |
+
+      A bundle is a repository in a single file: clone from it, fetch
+      from it, or hand it to somebody who cannot reach your server. An
+      archive is only the files -- no history, no refs.
+
+      ## Tags
+
+      ```bash
+      git tag v1.0               # lightweight: just a name
+      git tag -a v1.0 -m "..."   # annotated: an object with a message
+      ```
+
+      An annotated tag is an object of its own, with a tagger, a date
+      and a message. A lightweight tag is only a name for a commit. For
+      anything you release, use the annotated one.
+    exercises:
+      - id: a-recovery-reflog
+        title: Get the commit back
+        prompt: |
+          Somebody reset this branch by accident. The commit is gone from
+          the history -- but git still remembers it.
+
+          Put the branch back where it was: `main` must point at the
+          commit with the subject `Add the feature` again, and the
+          working tree must be clean.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git reset --hard HEAD@{1}
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+            - printf 'feature\n' > feature.txt
+            - git add feature.txt
+            - git commit -m "Add the feature"
+            - git reset --hard HEAD~1
+        checks:
+          - name: the commit is back
+            kind: command
+            command: git log -1 --format=%s
+          - name: the history has both commits
+            kind: command
+            command: git rev-list --count HEAD
+          - name: the working tree is clean
+            kind: state
+            select: status
+        hints:
+          - |
+            `git reflog` lists every place `HEAD` has been, newest first.
+          - |
+            `HEAD@{1}` means "where HEAD was one entry ago". The commit
+            you want is the one the reflog records as
+            `commit: Add the feature`.
+          - |
+            `git reset --hard <ref>` moves the branch and makes the
+            working tree match it.
+        teach: |
+          A reset moves the branch and writes a reflog entry saying so.
+          The old commit is not deleted -- it is still in the object
+          database, and the reflog is a list of places it can be found.
+
+          `HEAD@{1}` is the second most recent entry in that list. The
+          numbering counts backwards from the present, so `HEAD@{0}` is
+          where HEAD is now, `HEAD@{1}` is where it was before the last
+          move, and so on. The same syntax works for branches:
+          `main@{2}`.
+
+          `git reflog` is the command to read when something has gone
+          missing. It is not a history of your commits -- it is a
+          history of *movements*, and a commit can appear in it several
+          times.
+
+          One warning: the reflog is per-repository and per-clone. It
+          does not travel in a push, and it expires after a while by
+          default.
+        tags: [recovery, history]
+      - id: a-recovery-fsck
+        title: Rescue an unreachable commit
+        prompt: |
+          This repository contains a commit that nothing points at any
+          more. The reflog has been expired, so even that record is gone.
+
+          Find the commit with `git fsck` and give it a branch called
+          `rescued`, so that it is reachable again.
+        kind: cli
+        starter: |
+          # Write your commands here, one per line.
+        solution: |
+          git branch rescued $(git fsck --no-progress | awk '/dangling commit/ {print $3}')
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+            - printf 'lost\n' > lost.txt
+            - git add lost.txt
+            - git commit -m "Add the lost work"
+            - git reset --hard HEAD~1
+            - git reflog expire --expire=now --all
+        checks:
+          - name: the branch points at the lost commit
+            kind: command
+            command: git log -1 --format=%s rescued
+          - name: the commit's file is there
+            kind: command
+            command: git show rescued:lost.txt
+          - name: the branch is listed
+            kind: command
+            command: git branch
+        hints:
+          - |
+            `git fsck --no-progress` walks the object database and
+            reports what it cannot reach: `dangling commit <id>`.
+          - |
+            The commit's id is the third word of that line, so
+            `git fsck --no-progress | awk '/dangling commit/ {print $3}'`
+            prints it.
+          - |
+            `git branch <name> <commit>` creates a branch pointing at a
+            commit, even one that has no name yet.
+        teach: |
+          `git fsck` checks the object database for damage: missing
+          objects, broken links, objects that should be there and are
+          not. When it finds an object that nothing reaches, it calls it
+          *dangling* and prints its id.
+
+          Dangling does not mean broken. It means unreachable: the
+          commit is intact, but no branch or tag points at it, so git
+          has no reason to keep it. Giving it a branch makes it
+          reachable again, and it becomes an ordinary commit with an
+          ordinary history.
+
+          The reflog is why this kind of accident is usually
+          recoverable. `git fsck` treats the reflog as a root, so a
+          commit that was reset away is still "reachable" as far as fsck
+          is concerned -- which is why this exercise had to expire the
+          reflog first to make the commit truly dangling.
+        tags: [recovery, history]
+      - id: a-recovery-gc
+        title: Garbage collect
+        prompt: |
+          This repository contains objects that nothing can reach any
+          more.
+
+          Run git's garbage collection so that they are actually
+          removed. They were created a moment ago, so the default grace
+          period will not remove them -- you have to say you mean it.
+
+          Afterwards, `git fsck --no-progress` must report nothing at
+          all.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git gc --prune=now
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+            - printf 'lost\n' > lost.txt
+            - git add lost.txt
+            - git commit -m "Add the lost work"
+            - git reset --hard HEAD~1
+            - git reflog expire --expire=now --all
+        checks:
+          - name: fsck finds nothing
+            kind: command
+            command: git fsck --no-progress
+          - name: there are no loose objects left
+            kind: command
+            command: git count-objects -v
+        hints:
+          - |
+            `git gc` packs the reachable objects together and then prunes
+            the unreachable ones.
+          - |
+            By default git keeps unreachable objects for two weeks, in
+            case you change your mind. `--prune=now` throws that safety
+            net away.
+          - |
+            `git count-objects -v` says how many objects are loose and
+            how many are in a pack.
+        teach: |
+          `git gc` does two jobs. It *packs* the loose objects into a
+          single compressed file, which is why a repository with a long
+          history is much smaller than the sum of its parts. And it
+          *prunes* the objects that nothing can reach, which is the part
+          that matters here.
+
+          The two-week grace period is deliberate. People reset, change
+          their minds, and reset back; a commit that was unreachable an
+          hour ago is often wanted again tomorrow. `git prune` will not
+          remove anything younger than that unless you say
+          `--expire=now`, and `git gc --prune=now` passes the same
+          instruction on.
+
+          Running it is safe when the repository is healthy, but it is
+          the one git command that can genuinely destroy work -- so
+          rescue what you want first, and only then collect.
+        tags: [recovery]
+      - id: a-archives-bundle
+        title: Bundle the history
+        prompt: |
+          Make a **bundle**: a single file that contains git objects and
+          the refs that point at them, so that somebody else can get the
+          history without a server.
+
+          Create `history.bundle` containing every branch of this
+          repository, and then check that git agrees the bundle is
+          sound.
+        kind: cli
+        starter: |
+          # Write your commands here, one per line.
+        solution: |
+          git bundle create history.bundle --all
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+        checks:
+          - name: the bundle verifies
+            kind: command
+            command: git bundle verify history.bundle
+          - name: the bundle lists the refs it carries
+            kind: command
+            command: git bundle list-heads history.bundle
+        hints:
+          - |
+            `git bundle create <file> <ref>...` writes the bundle.
+            `--all` means every branch.
+          - |
+            `git bundle verify <file>` checks the file and says whether
+            it records a complete history.
+          - |
+            `git bundle list-heads <file>` shows the refs inside it.
+        teach: |
+          A bundle is a repository in one file. It holds the objects and
+          the refs, and it can be cloned from, fetched from, or simply
+          copied on a USB stick. `git bundle create history.bundle
+          --all` is the command to reach for when you need to hand
+          somebody the whole history and there is no server to hand it
+          from.
+
+          `git bundle verify` is the check worth making before you send
+          it. It reads the bundle back and reports what is inside, and
+          whether the history is complete -- a bundle that is missing
+          the commits a ref needs is a bundle that cannot be cloned.
+
+          Bundles can also be incremental: `git bundle create
+          more.bundle main ^v1.0` records only what has happened since
+          `v1.0`, which is how you send a big history in pieces.
+        tags: [archive, remotes]
+      - id: a-archives-release
+        title: Tag a release and archive it
+        prompt: |
+          Cut a release.
+
+          Create an **annotated** tag `v1.0` on the current commit, with
+          the message `Release 1.0`. Then create a **lightweight** tag
+          `latest` on the same commit.
+
+          Finally, write a tar archive of the tree at `v1.0` to
+          `v1.0.tar`.
+        kind: cli
+        starter: |
+          # Write your commands here, one per line.
+        solution: |
+          git tag -a v1.0 -m "Release 1.0" HEAD
+          git tag latest HEAD
+          git archive --format=tar v1.0 > v1.0.tar
+        seed:
+          files:
+            README.md: |
+              # demo
+            app.py: |
+              print("hello")
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+        checks:
+          - name: the tags are the right kind
+            kind: state
+            select: tags
+          - name: the archive holds the tagged files
+            kind: command
+            command: tar -tf v1.0.tar
+        hints:
+          - |
+            `git tag -a <name> -m <message>` makes an annotated tag.
+            Without the `-a` the tag is lightweight.
+          - |
+            An annotated tag is an object of its own, with a message and
+            a tagger. A lightweight tag is only a name for a commit.
+          - |
+            `git archive --format=tar <tree-ish>` writes a tar of the
+            files in that tree.
+        teach: |
+          The two kinds of tag are not the same thing, and the
+          difference shows up in what git can tell you about them. A
+          lightweight tag is a ref and nothing else: a name that points
+          at a commit. An annotated tag is an object of its own, with a
+          tagger, a date and a message -- and `git tag -n` will show you
+          that message, while a lightweight tag has none.
+
+          Use the annotated one for anything you release. It carries the
+          release date and the person who made it, it can be signed, and
+          it survives a `git describe`.
+
+          `git archive` is the other way to share a release, and it is
+          the opposite of a bundle: it takes the *tree* at a commit and
+          writes out the files, with no history and no refs. That is
+          exactly what you want for a tarball of a release, and it works
+          for any tree-ish, so `git archive --format=tar v1.0` gives the
+          files exactly as they were in that release.
+        tags: [tags, archive]

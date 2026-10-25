@@ -1,0 +1,1876 @@
+id: intermediate
+title: Intermediate
+description: >-
+  The part of git where the history stops being a straight line: branches,
+  merges, rebases, cherry-picks and remotes. These are the commands that
+  change the shape of a repository rather than just its contents, and the
+  ones that go wrong in ways that are hard to undo. Work through this after
+  the foundations, once committing and staging make sense.
+difficulty: intermediate
+order: 2
+lessons:
+  - id: i-branches
+    title: Branches
+    summary: Branches are movable pointers, and moving them is mostly free.
+    body: |
+      # Branches
+
+      A branch is a **movable pointer to a commit**. That is the whole idea,
+      and almost every surprise in this lesson follows from it.
+
+      ```bash
+      git branch feature/login     # a new pointer; stay where you are
+      git switch feature/login      # move HEAD to that pointer
+      git switch -c feature/login   # a new pointer, and move HEAD to it
+      ```
+
+      Creating a branch copies nothing. Two branches that point at the same
+      commit share every bit of the history behind them, which is why
+      creating one is instant and costs nothing.
+
+      ## Looking around
+
+      ```bash
+      git branch                     # the local branches, * marks the current
+      git branch -v                  # ... with each branch's latest commit
+      git branch --show-current      # just the current branch's name
+      git symbolic-ref --short HEAD  # the same thing, another way
+      git branch -a                  # local branches and remote-tracking ones
+      ```
+
+      `git branch --show-current` is the one to use in a script.
+      `git symbolic-ref --short HEAD` says the same thing and also works
+      before the first commit, when `HEAD` points at a branch that does not
+      exist yet.
+
+      ## Moving, renaming, deleting
+
+      ```bash
+      git branch -m old new     # rename
+      git branch -d feature/x   # delete, but only if it is merged
+      git branch -D feature/x   # delete, merged or not
+      ```
+
+      `-d` is the safe delete. It refuses to remove a branch whose commits
+      are not reachable from `HEAD`, because removing it would throw work
+      away. `-D` throws it away anyway.
+
+      ## The part that surprises people
+
+      > **A branch does not copy your files.**
+      >
+      > Switching branches rewrites the working tree to match the commit
+      > you land on. A file that exists on one branch and not the other
+      > disappears when you switch, and comes back when you switch again.
+      > This is also why an uncommitted change can block a switch.
+
+      | Command | What it moves |
+      | --- | --- |
+      | `git branch <name>` | a new pointer, and nothing else |
+      | `git switch <branch>` | HEAD, and the working tree to match |
+      | `git branch -m <a> <b>` | a pointer's name |
+      | `git branch -d <name>` | a pointer, if it is safe to |
+    exercises:
+      - id: i-branches-create-a-branch
+        title: Create a branch and switch to it
+        prompt: |
+          This repository is on `main`, with a single commit.
+
+          Create a branch called `feature/login` that starts at that same
+          commit, and switch to it. Do not make any commits, and do not
+          change any files.
+        kind: cli
+        starter: |
+          # Write your commands here, one per line.
+        solution: |
+          git switch -c feature/login
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+        checks:
+          - name: there are two branches, and the new one is current
+            kind: state
+            select: branches
+          - name: the current branch is feature/login
+            kind: command
+            command: git branch --show-current
+          - name: the history has not changed
+            kind: command
+            command: git rev-list --count HEAD
+        hints:
+          - |
+            `git switch -c <name>` creates a branch and moves to it in one
+            step. The older spelling is `git checkout -b <name>`.
+          - |
+            The branch must start at the commit you are on, so create it
+            without moving anywhere first.
+          - |
+            `git branch <name>` on its own creates a branch but leaves you
+            where you are.
+        teach: |
+          A branch is a name for a commit. `git switch -c feature/login`
+          writes `refs/heads/feature/login` into the repository, points it
+          at the commit `HEAD` was pointing at, and then moves `HEAD` to
+          it.
+
+          Nothing was copied. The two branches share the whole history
+          behind them, which is why creating a branch is instant: it is
+          one small file under `.git/refs/heads`, or one line in
+          `.git/packed-refs`.
+
+          Because the new branch starts at the current commit, the working
+          tree does not change at all -- the commit it is showing has not
+          changed, so there is nothing to rewrite.
+        tags: [branches]
+      - id: i-branches-switch-between-branches
+        title: Move to another branch
+        prompt: |
+          You are on `feature/login`, which has a file `app.py` that `main`
+          does not have.
+
+          Move to `main`. The file `app.py` must be gone from your working
+          tree when you get there, because `main` does not contain it.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git switch main
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+            - git switch -c feature/login
+            - printf 'print("login")\n' > app.py
+            - git add app.py
+            - git commit -m "Add the login page"
+            - git switch main
+            - git switch feature/login
+        checks:
+          - name: you are on main
+            kind: command
+            command: git branch --show-current
+          - name: app.py is no longer tracked
+            kind: command
+            command: git ls-files
+          - name: main still has only one commit
+            kind: command
+            command: git rev-list --count main
+          - name: the other branch still exists
+            kind: state
+            select: branches
+        hints:
+          - |
+            `git switch <branch>` moves to a branch that already exists.
+          - |
+            Switching updates the working tree to match the commit you
+            land on, so a file that only exists on the other branch is
+            removed from your disk.
+          - |
+            `git checkout main` does the same thing, but `switch` says what
+            it does.
+        teach: |
+          `git switch` does two things at once: it moves the `HEAD` pointer
+          to the branch you named, and it rewrites the working tree to
+          match the commit that branch points at.
+
+          That second half is why `app.py` disappears. Git compares the file
+          lists of the two commits and makes your directory agree with the
+          new one -- adding what is missing, removing what is not, and
+          rewriting what changed.
+
+          Which is also why an uncommitted change to a file that differs
+          between the two branches blocks the switch: git will not throw
+          your work away to get there. It stops and asks you to commit or
+          stash it first.
+        tags: [branches]
+      - id: i-branches-rename-a-branch
+        title: Rename a branch
+        prompt: |
+          The branch `feature/login` has the wrong name. It should be
+          called `feature/auth`.
+
+          Rename it. The commit it points at must not change, and no other
+          branch may be created or deleted.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git branch -m feature/login feature/auth
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+            - git switch -c feature/login
+            - printf 'print("login")\n' > app.py
+            - git add app.py
+            - git commit -m "Add the login page"
+            - git switch main
+        checks:
+          - name: the branches are main and feature/auth
+            kind: state
+            select: branches
+          - name: feature/auth still points at the login commit
+            kind: command
+            command: git log -1 --format=%s feature/auth
+          - name: main was not touched
+            kind: command
+            command: git rev-list --count main
+        hints:
+          - |
+            `git branch -m <old> <new>` renames a branch.
+          - |
+            With a single name, `git branch -m <new>` renames the branch
+            you are on.
+          - |
+            Renaming moves a pointer. It does not create a commit.
+        teach: |
+          A rename moves a ref from one name to another. The commit it
+          points at is untouched, so the history is identical -- only the
+          label changed.
+
+          `git branch -m` works on a branch you are not on, which is why
+          both names are given here. With one name it renames the current
+          branch, and that is the form you will use most often.
+
+          Renaming is a normal thing to want to do *before* a branch is
+          pushed, and a bad thing to do afterwards: other people have the
+          old name in their clones, and their copy of the branch keeps
+          pointing at the old name.
+        tags: [branches]
+      - id: i-branches-delete-a-branch
+        title: Delete a branch
+        prompt: |
+          The branch `wip/scratch` has a commit that was never merged into
+          `main`. The safe delete refuses to remove it, because it would
+          throw the commit away.
+
+          Delete the branch anyway, using the force flag. Leave `main`
+          exactly as it was.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git branch -D wip/scratch
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+            - git switch -c wip/scratch
+            - printf 'scratch\n' > scratch.txt
+            - git add scratch.txt
+            - git commit -m "Scratch work"
+            - git switch main
+        checks:
+          - name: only main is left
+            kind: state
+            select: branches
+          - name: the scratch commit is no longer reachable
+            kind: command
+            command: git rev-list --all --count
+          - name: main is untouched
+            kind: command
+            command: git rev-list --count main
+        hints:
+          - |
+            `git branch -d <name>` deletes a branch only if its commits are
+            already merged into the current branch.
+          - |
+            The uppercase `-D` is the same command with the safety check
+            switched off.
+          - |
+            Deleting a branch does not delete the commit straight away. It
+            just stops pointing at it.
+        teach: |
+          `-d` checks that the branch's commits are reachable from `HEAD`,
+          and refuses otherwise. It is the same kind of guard that makes
+          `rm -r` ask before it removes a directory of files.
+
+          `-D` skips the check. The commits themselves are not erased on
+          the spot -- they become unreachable, and git keeps them for a
+          while so that `git reflog` can still find them. That is why
+          `git rev-list --all --count` drops back to one commit: nothing
+          points at the scratch commit any more.
+
+          The lesson is about the two flags rather than the command.
+          `git branch -d` is the one you reach for by default, and `-D` is
+          the deliberate override you use when you already know the work is
+          not needed.
+        tags: [branches]
+  - id: i-merging
+    title: Merging
+    summary: Fast-forwards, real merge commits, conflicts, and getting out.
+    body: |
+      # Merging
+
+      Merging brings two lines of work together. Git has three ways of
+      doing it, and which one it picks depends on what the history looks
+      like.
+
+      ```bash
+      git merge <branch>           # merge into the current branch
+      git merge --no-ff <branch>   # always make a merge commit
+      git merge --abort            # back out of a merge
+      ```
+
+      ## Fast-forward
+
+      If the branch you are merging is strictly ahead of the one you are
+      on, git does not need to combine anything. It simply moves your
+      branch along:
+
+      ```
+      main      A---B          main      A---B---C
+      feature   A---B---C  ->  feature   A---B---C
+      ```
+
+      No commit is created, because there is no new history. This is a
+      **fast-forward**, and it is the tidiest outcome there is.
+
+      ## A real merge
+
+      When the branches have diverged, git has to record that two lines of
+      work came together. It does that with a **merge commit**, which has
+      two parents:
+
+      ```
+                    C---D  main
+                   /     \
+      A---B-------M       feature
+                   \     /
+                    C---E
+      ```
+
+      The merge commit's tree is the result of combining both sides, and
+      its message records the fact of the merge. `--no-ff` forces this
+      shape even when a fast-forward was possible.
+
+      ## Conflicts
+
+      When both sides changed the same lines in ways that do not fit
+      together, git cannot decide. It writes the conflict into the file:
+
+      ```text
+      <<<<<<< HEAD
+      print("main")
+      =======
+      print("feature")
+      >>>>>>> feature
+      ```
+
+      The three marker lines are not part of your file. They are the
+      conflict, and the merge is not finished until every one of them is
+      gone. You fix the file, `git add` it (which is how git knows the
+      conflict is resolved), and commit.
+
+      A merge that stops at a conflict leaves the repository half-finished.
+      `git merge --abort` puts everything back the way it was.
+    exercises:
+      - id: i-merging-fast-forward
+        title: Merge without a merge commit
+        prompt: |
+          `main` and `feature` point at the same commit, and `feature` has
+          one commit on top of it that `main` does not have.
+
+          Merge `feature` into `main`. The result should be a
+          **fast-forward**: `main` moves along to `feature`'s commit, and
+          no merge commit is created.
+        kind: cli
+        starter: |
+          # Write your commands here, one per line.
+        solution: |
+          git switch main
+          git merge feature
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+            - git switch -c feature
+            - printf 'feature\n' > feature.txt
+            - git add feature.txt
+            - git commit -m "Add the feature"
+            - git switch main
+        checks:
+          - name: main has two commits, not three
+            kind: command
+            command: git rev-list --count HEAD
+          - name: the history is a straight line
+            kind: state
+            select: log
+          - name: the newest commit is the feature commit
+            kind: command
+            command: git log -1 --format=%s
+        hints:
+          - |
+            `git merge <branch>` merges a branch into the branch you are
+            on.
+          - |
+            When the branch you are merging is strictly ahead of the
+            current one, git just slides the current branch forward. That
+            is a fast-forward.
+          - |
+            Check where you are first. The merge happens on whichever
+            branch is checked out.
+        teach: |
+          A merge has two jobs: work out what changed on each side, and
+          record the result. When one side has not moved at all, the first
+          job has an easy answer -- take everything from the other side --
+          and the second job has nothing to record. There is no new
+          commit, because there is no new history. `main` simply ends up
+          pointing at the commit `feature` was pointing at.
+
+          That is what "fast-forward" means. The branch pointer slides
+          forward along a line that already exists.
+
+          Git decides this for you and says so in the message it prints.
+          Knowing about it matters because of the opposite case: when the
+          branches have diverged, git has to make a commit with two
+          parents, and that is where `--no-ff` and conflicts come in.
+        tags: [merge, branches]
+      - id: i-merging-no-ff
+        title: Force a merge commit
+        prompt: |
+          `main` and `feature` have **diverged**: each has a commit that
+          the other does not have.
+
+          Merge `feature` into `main` with `--no-ff`, so that the result
+          has a real merge commit with two parents rather than a
+          fast-forward. Give the merge commit the message
+          `Merge feature into main`.
+        kind: cli
+        starter: |
+          # Write your commands here, one per line.
+        solution: |
+          git switch main
+          git merge --no-ff feature -m "Merge feature into main"
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+            - git switch -c feature
+            - printf 'feature\n' > feature.txt
+            - git add feature.txt
+            - git commit -m "Add the feature"
+            - git switch main
+            - printf 'main\n' > main.txt
+            - git add main.txt
+            - git commit -m "Add the main work"
+        checks:
+          - name: the merge commit has two parents
+            kind: state
+            select: log
+          - name: the merge commit says what it should
+            kind: command
+            command: git log -1 --format=%s
+          - name: the history has four commits
+            kind: command
+            command: git rev-list --count HEAD
+        hints:
+          - |
+            `--no-ff` tells git not to fast-forward, even when it could.
+          - |
+            `git merge` takes `-m "..."` for the merge commit's message.
+          - |
+            The merge commit is a commit like any other. It just has two
+            parents instead of one.
+        teach: |
+          A merge commit has two parents: the commit that `HEAD` pointed at
+          before the merge, and the tip of the branch that was merged in.
+          Its tree is the result of combining the two sides.
+
+          `--no-ff` forces git to create one even when a fast-forward
+          would have been possible. It is the right choice when the branch
+          is about to be shared, because the merge commit records *that
+          the two lines of work came together* -- something a
+          fast-forward silently loses.
+
+          The `-m` is needed here because a merge commit is a commit, and
+          a commit needs a message. Without it git would open an editor,
+          and there is no editor here.
+        tags: [merge, history]
+      - id: i-merging-resolve-a-conflict
+        title: Resolve a merge conflict
+        prompt: |
+          `main` and `feature` have both changed the same line of `app.py`,
+          so merging them produces a conflict.
+
+          Merge `feature` into `main` and resolve it. The resolved file
+          must contain all three of these lines, in this order:
+
+          ```
+          print("hello")
+          print("main")
+          print("feature")
+          ```
+
+          Finish the merge with a commit whose message is
+          `Merge feature into main`, and leave the working tree clean.
+        kind: cli
+        starter: |
+          # Write your commands here, one per line.
+        solution: |
+          git switch main
+          git merge feature
+          printf 'print("hello")\nprint("main")\nprint("feature")\n' > app.py
+          git add app.py
+          git commit -m "Merge feature into main"
+        seed:
+          files:
+            app.py: |
+              print("hello")
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+            - git switch -c feature
+            - printf 'print("hello")\nprint("feature")\n' > app.py
+            - git add app.py
+            - git commit -m "Add the feature line"
+            - git switch main
+            - printf 'print("hello")\nprint("main")\n' > app.py
+            - git add app.py
+            - git commit -m "Add the main line"
+        checks:
+          - name: the merged file has both changes
+            kind: command
+            command: git show HEAD:app.py
+          - name: the merge commit has the right message
+            kind: command
+            command: git log -1 --format=%s
+          - name: the working tree is clean
+            kind: state
+            select: status
+          - name: the history has four commits
+            kind: command
+            command: git rev-list --count HEAD
+        hints:
+          - |
+            A conflicted merge leaves the conflict markers in the file and
+            stops. `git status` tells you which files are still unmerged.
+          - |
+            The markers look like `<<<<<<< HEAD`, `=======` and
+            `>>>>>>> feature`. Edit the file so that only the content you
+            want is left.
+          - |
+            `git add app.py` tells git the conflict is resolved, and
+            `git commit` finishes the merge.
+        teach: |
+          A conflict is git saying "I cannot decide what this line should
+          be". Both sides changed the same lines in ways that do not fit
+          together cleanly, so there is no answer that is obviously right.
+
+          Git writes all the versions into the file and stops. The
+          `<<<<<<<`, `=======` and `>>>>>>>` markers are not part of your
+          file -- they *are* the conflict, and the merge is not finished
+          until every one of them is gone.
+
+          Resolving it is two steps: write the file the way it should end
+          up, then `git add` it. Git treats "staged" as "resolved", so the
+          `git add` is what clears the conflict. The `git commit` that
+          follows records the merge, with two parents.
+
+          Notice what the merge commit contains: the *result*, not the
+          argument about how it was resolved. Whoever reads the history
+          later sees one commit containing both changes.
+        tags: [merge, commit]
+      - id: i-merging-abort-a-merge
+        title: Abort a merge
+        prompt: |
+          Somebody started a merge of `feature` into `main` and it stopped
+          at a conflict. The repository is in a half-finished state, with
+          conflict markers still in `app.py`.
+
+          Back the merge out with `git merge --abort`. When you are done,
+          `main` must be exactly as it was before the merge, and the
+          working tree must be clean.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git merge --abort
+        seed:
+          files:
+            app.py: |
+              print("hello")
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+            - git switch -c feature
+            - printf 'print("hello")\nprint("feature")\n' > app.py
+            - git add app.py
+            - git commit -m "Add the feature line"
+            - git switch main
+            - printf 'print("hello")\nprint("main")\n' > app.py
+            - git add app.py
+            - git commit -m "Add the main line"
+            - git merge feature || true
+        checks:
+          - name: the working tree is clean
+            kind: state
+            select: status
+          - name: main is back to its two commits
+            kind: command
+            command: git rev-list --count HEAD
+          - name: no merge is in progress
+            kind: command
+            command: git rev-parse -q --verify MERGE_HEAD
+          - name: the history has no merge commit
+            kind: state
+            select: log
+        hints:
+          - |
+            `git merge --abort` throws the merge away and puts everything
+            back where it was.
+          - |
+            `git status` says "You have not concluded your merge" while a
+            merge is in progress, and `git merge --abort` is the way out.
+          - |
+            The other way out is to finish the merge: resolve the file,
+            `git add` it, and commit.
+        teach: |
+          A merge that stops at a conflict leaves the repository in a
+          half-finished state: `MERGE_HEAD` records the branch being
+          merged, the index holds the conflicted entries, and the working
+          tree has the conflict markers in it.
+
+          `git merge --abort` is the way back out. It puts `HEAD` and the
+          index back where they were and rewrites the working tree to
+          match, so as far as the repository is concerned the merge never
+          happened. It works on a merge somebody else started, and on one
+          you started yourself a moment ago.
+
+          The other way out is to finish it: resolve the files, `git add`
+          them, and commit. Aborting is for when you decide the merge was
+          a mistake -- often because the conflict is telling you that the
+          two branches should not be merged at all.
+        tags: [merge, undo]
+  - id: i-rebasing
+    title: Rebasing
+    summary: Replaying commits on top of something else, and what that costs.
+    body: |
+      # Rebasing
+
+      A rebase does not merge. It **replays** commits on top of a
+      different base.
+
+      ```bash
+      git rebase main             # replay my commits on top of main
+      git rebase --onto <new> <old> <branch>
+      git rebase --continue       # carry on after resolving a conflict
+      git rebase --abort          # put everything back
+      ```
+
+      ## What actually happens
+
+      Git finds the commits that are on your branch but not on the
+      upstream, and applies each one as a patch onto the upstream's tip.
+      Each one is committed again, so every commit gets a new parent and a
+      new hash.
+
+      ```
+      A---B---C  feature          A---C'---D'  feature
+             \                  /
+      A---B------D---E  main    A---B---D---E  main
+      ```
+
+      The history on the right is a straight line. There is no merge
+      commit and no second parent.
+
+      ## The price
+
+      Rewriting means the old commits and the new ones both exist, with
+      different hashes and the same contents. If somebody else has already
+      fetched the old ones, the two histories now disagree, and merging
+          them produces duplicated work.
+
+      > **Rebase commits you have not pushed. Merge commits you have.**
+
+      ## Moving commits somewhere else
+
+      `git rebase --onto <newbase> <upstream> <branch>` takes the commits
+      in `<branch>` that are not in `<upstream>` and replays them on top of
+      `<newbase>`. It is how you move a commit from one branch to another.
+
+      ## The interactive rebase
+
+      `git rebase -i <upstream>` opens a list of the commits to replay,
+      one per line, and lets you change what happens to each:
+
+      | Verb | What it does |
+      | --- | --- |
+      | `pick` | replay the commit as it is |
+      | `drop` | leave the commit out entirely |
+      | `reword` | replay it, and change the message |
+      | `squash` | replay it and merge it into the previous commit |
+      | `fixup` | like `squash`, but keep the previous message |
+
+      Changing `pick` to `drop` is how you undo a commit that has not been
+      pushed, without disturbing the commits around it.
+    exercises:
+      - id: i-rebasing-rebase-onto-main
+        title: Rebase a branch onto main
+        prompt: |
+          `feature` has one commit that `main` does not have, and `main`
+          has moved on since `feature` was created.
+
+          Rebase `feature` onto `main`. When you are done, `feature` must
+          contain `main`'s new commit *and* its own, in that order, with no
+          merge commit anywhere.
+        kind: cli
+        starter: |
+          # Write your commands here, one per line.
+        solution: |
+          git switch feature
+          git rebase main
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+            - git switch -c feature
+            - printf 'feature\n' > feature.txt
+            - git add feature.txt
+            - git commit -m "Add the feature"
+            - git switch main
+            - printf 'main\n' > main.txt
+            - git add main.txt
+            - git commit -m "Add the main work"
+        checks:
+          - name: the history is a straight line of three commits
+            kind: state
+            select: log
+          - name: the history has three commits
+            kind: command
+            command: git rev-list --count HEAD
+          - name: the feature commit is on top
+            kind: command
+            command: git log -1 --format=%s
+          - name: main was not rewritten
+            kind: command
+            command: git log -1 --format=%s main
+        hints:
+          - |
+            `git rebase <upstream>` replays your commits on top of another
+            branch.
+          - |
+            The branch that gets rebased is the one you are on, so switch
+            to it first.
+          - |
+            After a rebase the commits have new hashes, but their contents
+            and their messages are unchanged.
+        teach: |
+          A rebase does not merge. It takes the commits that are on your
+          branch but not on the upstream, and replays them on top of the
+          upstream's tip. Each one is applied as a patch and committed
+          again, so every commit gets a new parent and a new hash.
+
+          That is why the history ends up as a straight line: `feature`'s
+          commit now sits directly on top of `main`'s new commit, with no
+          merge commit and no second parent.
+
+          The cost is the rewrite. `feature`'s commit was `abc123` before
+          the rebase and is `def456` after, and anybody who had already
+          fetched the old one now holds two different commits with the
+          same changes. That is why you rebase a branch you have not
+          pushed, and merge one that other people already have.
+        tags: [rebase, history]
+      - id: i-rebasing-onto-another-base
+        title: Move a commit to a different base
+        prompt: |
+          There are three branches, all starting from the same commit:
+
+          - `main` -- the base, with nothing on top of it.
+          - `topic` -- one commit on top of `main`.
+          - `release` -- one commit on top of `main` as well.
+
+          Move `topic`'s commit so that it sits on top of `release`
+          instead, using `git rebase --onto`. `main` and `release` must not
+          change, and `topic` must end up with `release`'s commit and then
+          its own.
+        kind: cli
+        starter: |
+          # Write your commands here, one per line.
+        solution: |
+          git switch topic
+          git rebase --onto release main topic
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+            - git switch -c topic
+            - printf 'topic\n' > topic.txt
+            - git add topic.txt
+            - git commit -m "Add the topic commit"
+            - git switch main
+            - git switch -c release
+            - printf 'release\n' > release.txt
+            - git add release.txt
+            - git commit -m "Add the release commit"
+            - git switch main
+        checks:
+          - name: topic now sits on top of release
+            kind: command
+            command: git log --format=%s topic
+          - name: topic has three commits
+            kind: command
+            command: git rev-list --count topic
+          - name: release was not changed
+            kind: command
+            command: git rev-list --count release
+          - name: main was not changed
+            kind: command
+            command: git rev-list --count main
+        hints:
+          - |
+            `git rebase --onto <newbase> <upstream> <branch>` moves the
+            commits that are in `<branch>` but not in `<upstream>` onto
+            `<newbase>`.
+          - |
+            Here the upstream is `main` and the new base is `release`.
+          - |
+            Give the branch as the third argument and git moves it for
+            you.
+        teach: |
+          The three-argument form of `git rebase` is the one that reaches
+          for a commit and puts it somewhere else.
+
+          Git works out the set of commits to move as "everything in
+          `<branch>` that is not in `<upstream>`", then replays that set on
+          top of `<newbase>`. Here the set is one commit -- `topic`'s --
+          and it lands on `release`.
+
+          Notice what it does *not* do: it does not touch `main`, and it
+          does not touch `release`. Only `topic` moves. The old commits
+          are still in the repository, unreferenced, until git garbage
+          collects them.
+
+          This is the tool for "this commit belongs on that branch" -- a
+          change that was made on the wrong branch, or a fix that has to
+          go somewhere other than where you found it.
+        tags: [rebase, branches]
+      - id: i-rebasing-interactive-drop
+        title: Drop a commit with an interactive rebase
+        prompt: |
+          `feature` has two commits of its own: `Add the feature`, and then
+          `Fix the bug`. The second one should never have been made.
+
+          Switch to `feature` and rebase it onto `main` **interactively**,
+          dropping the `Fix the bug` commit from the list. When you are
+          done, `feature` must have exactly one commit of its own.
+
+          There is no editor on this machine, so drive the sequence editor
+          from the command line: set `GIT_SEQUENCE_EDITOR` to a command
+          that changes the word `pick` in front of `Fix the bug` into the
+          word `drop`.
+        kind: cli
+        starter: |
+          # Write your commands here, one per line.
+        solution: |
+          git switch feature
+          GIT_SEQUENCE_EDITOR='sed -i "/Fix the bug/s|^pick |drop |"' git rebase -i main
+        seed:
+          env:
+            GIT_SEQUENCE_EDITOR: "sed -i 's/^pick \\(.*\\) Fix the bug$/drop \\1 Fix the bug/'"
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+            - git switch -c feature
+            - printf 'feature\n' > feature.txt
+            - git add feature.txt
+            - git commit -m "Add the feature"
+            - printf 'bug\n' > bug.txt
+            - git add bug.txt
+            - git commit -m "Fix the bug"
+            - git switch main
+            - printf 'main\n' > main.txt
+            - git add main.txt
+            - git commit -m "Add the main work"
+        checks:
+          - name: the dropped commit is gone
+            kind: command
+            command: git log --format=%s
+          - name: the history has three commits
+            kind: command
+            command: git rev-list --count HEAD
+          - name: the history is a straight line
+            kind: state
+            select: log
+        hints:
+          - |
+            `git rebase -i <upstream>` opens a list of the commits to
+            replay, one per line.
+          - |
+            Change the word `pick` in front of `Fix the bug` to `drop`, and
+            save the file. Git runs whatever `GIT_SEQUENCE_EDITOR` names to
+            make that edit, so a one-line `sed -i` command can do it for
+            you.
+          - |
+            `reword`, `edit`, `squash` and `fixup` are the other verbs you
+            will meet in that list.
+        teach: |
+          An interactive rebase shows you a todo list -- one line per
+          commit, oldest first -- and replays them in the order you leave
+          it in. Changing a verb changes what happens to that commit.
+
+          `drop` is how you undo a commit that has not been pushed yet,
+          without losing the commits around it. The result is the same
+          history you would have had if you had never made the commit in
+          the first place.
+
+          The list is edited by whatever `GIT_SEQUENCE_EDITOR` names. That
+          is normally your editor, but it can be any command -- and
+          `sed -i` is the usual choice when you want to change the list
+          from a script, exactly as here.
+
+          The rebase still rewrites everything after the dropped commit, so
+          the hashes of the surviving commits change too. That is the same
+          warning as always: do not rewrite history that other people have
+          already fetched.
+        tags: [rebase, history]
+      - id: i-rebasing-abort
+        title: Abort a rebase
+        prompt: |
+          Somebody started rebasing `feature` onto `main`, and it stopped
+          at a conflict. The repository is in a half-finished state, with
+          conflict markers still in `app.py`.
+
+          Back the rebase out with `git rebase --abort`. When you are
+          done, `feature` must be exactly as it was before the rebase, and
+          the working tree must be clean.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git rebase --abort
+        seed:
+          files:
+            app.py: |
+              print("hello")
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+            - git switch -c feature
+            - printf 'print("hello")\nprint("feature")\n' > app.py
+            - git add app.py
+            - git commit -m "Add the feature line"
+            - git switch main
+            - printf 'print("hello")\nprint("main")\n' > app.py
+            - git add app.py
+            - git commit -m "Add the main line"
+            - git switch feature
+            - git rebase main || true
+        checks:
+          - name: the working tree is clean
+            kind: state
+            select: status
+          - name: feature is back to its two commits
+            kind: command
+            command: git rev-list --count HEAD
+          - name: you are still on feature
+            kind: command
+            command: git branch --show-current
+          - name: no rebase is in progress
+            kind: command
+            command: git rev-parse -q --verify REBASE_HEAD
+        hints:
+          - |
+            `git rebase --abort` puts the branch and the working tree back
+            exactly where they were.
+          - |
+            `git status` says "interactive rebase in progress" while a
+            rebase is stuck, and it tells you the same thing.
+          - |
+            The other way out is to resolve the file, `git add` it, and
+            carry on with `git rebase --continue`.
+        teach: |
+          A rebase that stops at a conflict leaves the repository mid-way:
+          the branch still points at the old commits, the working tree has
+          the conflict markers, and git keeps the rebase's state under
+          `.git/rebase-merge` so it knows where to pick up again.
+
+          `git rebase --abort` throws all of that away and restores the
+          starting position -- the branch, the index and the working tree.
+
+          The other way out is `git rebase --continue`: resolve the
+          conflict, `git add` the file, and carry on with the rest of the
+          replay. `--skip` drops the commit that would not apply.
+
+          An abort is the right answer whenever the rebase turns out to be
+          the wrong idea. It is the rebase equivalent of `git merge
+          --abort`, and it costs nothing to reach for.
+        tags: [rebase, undo]
+  - id: i-cherry-pick-and-revert
+    title: Cherry-picking and reverting
+    summary: Moving one commit at a time, and undoing a commit properly.
+    body: |
+      # Cherry-picking and reverting
+
+      Sometimes you want one commit, not a whole branch. Cherry-picking
+      copies a commit; reverting undoes one.
+
+      ```bash
+      git cherry-pick <commit>        # copy one commit here
+      git cherry-pick <a>..<b>        # copy a range of commits
+      git revert <commit>             # undo a commit with a new commit
+      git revert --no-commit <commit> # undo it, but do not commit yet
+      ```
+
+      ## Cherry-picking
+
+      `git cherry-pick <commit>` applies that one commit's changes and
+      commits them. The new commit has the same author, the same message
+      and the same contents -- but a new hash, because its parent is
+      different.
+
+      A range works too, and the commits are applied oldest first:
+
+      ```bash
+      git cherry-pick main..feature    # everything in feature, not in main
+      git cherry-pick feature~2..feature   # just the last two commits
+      ```
+
+      Cherry-picking is the right tool when a fix needs to go somewhere
+      else -- onto a release branch, or into somebody else's work.
+
+      ## Reverting
+
+      `git revert <commit>` computes the inverse of a commit's changes and
+      commits that. It does not rewrite anything. The history ends up
+      saying what actually happened:
+
+      ```
+      A---B---C        A---B---C---D
+                      D = revert of B
+      ```
+
+      The commit that came *after* the one you reverted stays exactly
+      where it was. That is the difference between reverting and
+      resetting: `reset` says "that commit never happened", `revert` says
+      "that commit happened, and then it was undone".
+
+      `git revert --no-commit` applies the inverse without committing, so
+      you can stage the result and fold it into a commit of your own.
+    exercises:
+      - id: i-cherry-pick-one-commit
+        title: Copy one commit
+        prompt: |
+          `main` and `feature` have both moved on from a common commit.
+          `feature` has one commit that `main` does not have.
+
+          Make sure you are on `main`, and copy that commit onto it with
+          `git cherry-pick`. The commit's message must stay the same, and
+          `main` must gain exactly one commit.
+        kind: cli
+        starter: |
+          # Write your commands here, one per line.
+        solution: |
+          git switch main
+          git cherry-pick feature
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+            - git switch -c feature
+            - printf 'feature\n' > feature.txt
+            - git add feature.txt
+            - git commit -m "Add the feature"
+            - git switch main
+            - printf 'main\n' > main.txt
+            - git add main.txt
+            - git commit -m "Add the main work"
+        checks:
+          - name: main has gained exactly one commit
+            kind: command
+            command: git rev-list --count HEAD
+          - name: the copied commit kept its message
+            kind: command
+            command: git log -1 --format=%s
+          - name: the history is a straight line
+            kind: state
+            select: log
+        hints:
+          - |
+            `git cherry-pick <commit>` copies a commit onto the branch you
+            are on.
+          - |
+            A branch name works as the argument too, and git then picks
+            the commits that are in the branch but not in your history.
+          - |
+            Check which branch you are on first -- the commit lands on
+            whichever one that is.
+        teach: |
+          Cherry-picking applies a commit's *changes* as a patch and then
+          makes a new commit out of them. The new commit keeps the
+          original author, the original message and the original
+          contents.
+
+          It cannot keep the original hash, because a hash includes the
+          commit's parent, and the parent here is different. Two commits
+          with the same contents and the same message but different
+          parents are different commits.
+
+          That is why cherry-picking a commit that is already in your
+          history does nothing: git notices there is nothing to apply.
+          And it is why cherry-picking the same fix into two branches
+          gives you two commits with two different hashes -- which is
+          exactly what you want when the two branches will be merged
+          later, because the merge will see no conflict.
+        tags: [cherry-pick, commit]
+      - id: i-cherry-pick-a-range
+        title: Copy a range of commits
+        prompt: |
+          `feature` has three commits on top of `main`: `First`, `Second`
+          and `Third`.
+
+          Copy the last two of them -- `Second` and `Third` -- onto `main`,
+          in that order, using a range. `main` must end up with those two
+          commits and nothing else, so `First` must not come with them.
+        kind: cli
+        starter: |
+          # Write your commands here, one per line.
+        solution: |
+          git switch main
+          git cherry-pick feature~2..feature
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+            - git switch -c feature
+            - printf 'first\n' > first.txt
+            - git add first.txt
+            - git commit -m "First"
+            - printf 'second\n' > second.txt
+            - git add second.txt
+            - git commit -m "Second"
+            - printf 'third\n' > third.txt
+            - git add third.txt
+            - git commit -m "Third"
+            - git switch main
+        checks:
+          - name: main has the two commits, in order
+            kind: command
+            command: git log --format=%s
+          - name: main has three commits
+            kind: command
+            command: git rev-list --count HEAD
+          - name: first.txt did not come along
+            kind: command
+            command: git ls-files
+        hints:
+          - |
+            A range is written `<start>..<end>`, and it means "the commits
+            in `<end>` that are not in `<start>`".
+          - |
+            `feature~2` is the commit *before* `First`, so the range
+            covers `Second` and `Third`.
+          - |
+            `git cherry-pick` applies a range oldest first, so the order
+            of the commits is preserved.
+        teach: |
+          The `a..b` notation is git's standard way of saying "the commits
+          in `b` that are not in `a`". It is the same notation you meet in
+          `git log main..feature` and `git diff main..feature`, and it
+          always means the same thing: the difference between two sets.
+
+          So `feature~2..feature` is "everything in `feature` except the
+          two oldest commits" -- which, in this repository, is exactly
+          `Second` and `Third`.
+
+          `git cherry-pick` walks the range oldest first and replays each
+          commit in turn, so the order of the history is preserved. If one
+          of them conflicts, git stops with the conflict in front of you,
+              and `git cherry-pick --continue` picks it up again.
+        tags: [cherry-pick, history]
+      - id: i-revert-a-middle-commit
+        title: Revert a commit in the middle
+        prompt: |
+          The history has three commits:
+
+          1. `Add the parser`
+          2. `Add the broken check`
+          3. `Add the docs`
+
+          Revert the **second** one. The history must not be rewritten --
+          the undo has to be a new commit on top -- and the file the
+          second commit added must be gone. The third commit must still be
+          there.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git revert --no-edit HEAD~1
+        seed:
+          files:
+            parser.py: |
+              parse = True
+          commands:
+            - git add .
+            - git commit -m "Add the parser"
+            - printf 'check = True\n' > check.py
+            - git add check.py
+            - git commit -m "Add the broken check"
+            - printf 'docs\n' > docs.md
+            - git add docs.md
+            - git commit -m "Add the docs"
+        checks:
+          - name: the history grew by one commit
+            kind: command
+            command: git rev-list --count HEAD
+          - name: the file the commit added is gone
+            kind: command
+            command: git ls-files
+          - name: the undo is the newest commit
+            kind: command
+            command: git show --name-only --format= HEAD
+          - name: the commit after the reverted one survived
+            kind: command
+            command: git rev-list --count HEAD~1
+        hints:
+          - |
+            `git revert <commit>` creates a new commit that undoes another
+            one.
+          - |
+            `HEAD~1` is the commit before the one you are on -- here, the
+            second of the three.
+          - |
+            `--no-edit` skips the message editor, so git writes the revert
+            message for you.
+        teach: |
+          `git revert` computes the inverse of a commit's changes and
+          commits that. The history keeps both the mistake and the undo,
+          so anybody reading it later can see what happened.
+
+          Reverting a commit in the *middle* is the interesting case. The
+          commit after it stays exactly where it was, with the same parent
+          and the same hash -- only the undone commit's change is
+          reversed. If the later commit had built on the change you are
+          reverting, the revert can conflict, and you resolve it the same
+          way you resolve any other conflict.
+
+          `git revert --no-commit` is the same thing without the commit:
+          the inverse is applied and staged, so you can look at it, or
+          fold it into a commit of your own.
+
+          This is the whole difference between `reset` and `revert`.
+          `reset` says "that commit never happened"; `revert` says "that
+          commit happened, and then it was undone". For a commit other
+          people have already pulled, only the second is honest.
+        tags: [revert, commit, history]
+  - id: i-remotes
+    title: Remotes
+    summary: Fetching, pulling, pushing, and the branches that live on the server.
+    body: |
+      # Remotes
+
+      A **remote** is a name for another repository. It is not a copy of
+      it and it is not a server -- it is a nickname, usually for a URL.
+
+      ```bash
+      git remote -v                 # the remotes, and where they point
+      git remote add <name> <url>   # add one
+      git remote remove <name>      # remove one
+      ```
+
+      ## Fetching
+
+      ```bash
+      git fetch             # fetch from the default remote
+      git fetch origin      # fetch from one remote
+      git fetch --all       # fetch from every remote
+      ```
+
+      A fetch copies commits and branches from the remote into your
+      repository, under `refs/remotes/<remote>/<branch>`. Those are
+      **remote-tracking branches**, and they are read-only: they are git's
+      record of where the remote was the last time you looked. A fetch
+      never changes your working tree and never moves your branches -- it
+      only updates your record of the remote. `git branch -r` lists them,
+      and `git log origin/main` reads the remote's version of `main`.
+
+      ## Pulling
+
+      ```bash
+      git pull             # fetch, then merge into the current branch
+      git pull --rebase    # fetch, then rebase the current branch
+      ```
+
+      The difference is what happens to your commits. `git pull` merges
+      the remote into your branch, which leaves a merge commit when the
+      two have diverged. `git pull --rebase` replays your commits on top
+      of the remote instead, so the history stays a straight line. If
+      your commits have not been pushed, the rebase version is tidier.
+
+      ## Pushing
+
+      ```bash
+      git push                    # push the current branch
+      git push -u origin main     # push, and set the upstream
+      ```
+
+      `-u` sets the **upstream**: the remote branch your branch tracks.
+      After that, `git pull` and `git push` need no arguments, and
+      `git status` can tell you whether you are ahead or behind.
+
+      ## Cloning
+
+      ```bash
+      git clone <url> <directory>
+      ```
+
+      A clone copies the whole repository -- history, branches and all --
+      and checks out the remote's default branch. It also sets the
+      upstream for you, which is why a fresh clone can `git pull` with no
+      arguments.
+    exercises:
+      - id: i-remotes-fetch
+        title: Fetch from the remote
+        prompt: |
+          This repository has a remote called `origin`, and the remote has
+          a commit that you do not have locally.
+
+          Fetch from the remote, so that the remote's commit becomes
+          available locally as the remote-tracking branch `origin/main`.
+          Do not merge it and do not pull.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git fetch origin
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+          remotes:
+            origin:
+              files: {}
+              commands:
+                - printf 'remote\n' > remote.txt
+                - git add remote.txt
+                - git commit -m "Remote work"
+        checks:
+          - name: the remote-tracking branch exists
+            kind: state
+            select: remote_branches
+          - name: origin/main has the remote's commit
+            kind: command
+            command: git log -1 --format=%s origin/main
+          - name: main was not moved
+            kind: command
+            command: git rev-list --count main
+        hints:
+          - |
+            `git fetch` copies the remote's branches into
+            `refs/remotes/origin/`, without touching your own branches.
+          - |
+            You do not need to name the remote, but naming it is clearer.
+          - |
+            `git fetch --all` does the same for every remote at once.
+        teach: |
+          A fetch asks the remote what it has and copies anything you are
+          missing into your repository. It writes the result to
+          `refs/remotes/origin/main`, which is why you reach the remote's
+          version of `main` as `origin/main`.
+
+          The remote-tracking branch is git's record of the remote, not a
+          branch you work on. It is deliberately kept separate from your
+          local `main`: after the fetch, `main` still points at the old
+          commit, and `origin/main` points at the new one. Nothing you
+          have done has changed, and nothing will until you merge or
+          pull.
+
+          That separation is the point. It is what lets you look at what
+          the remote has (`git log origin/main`) before you decide to
+          bring it in.
+        tags: [remotes, branches]
+      - id: i-remotes-pull
+        title: Pull the remote's work
+        prompt: |
+          The remote `origin` has a commit that you do not have, and
+          `main` tracks `origin/main`.
+
+          Bring the remote's work into `main` with `git pull`. When you
+          are done, `main` must contain the remote's commit.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git pull
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+            - git config branch.main.remote origin
+            - git config branch.main.merge refs/heads/main
+          remotes:
+            origin:
+              files: {}
+              commands:
+                - printf 'remote\n' > remote.txt
+                - git add remote.txt
+                - git commit -m "Remote work"
+        checks:
+          - name: main now has the remote's commit
+            kind: command
+            command: git log -1 --format=%s
+          - name: main has two commits
+            kind: command
+            command: git rev-list --count HEAD
+          - name: the remote work is on disk
+            kind: command
+            command: git ls-files
+        hints:
+          - |
+            `git pull` fetches and then merges the fetched commits into
+            the branch you are on.
+          - |
+            The branch has to know which remote branch it follows. If
+            `git pull` complains that there is no tracking information,
+            `git pull origin main` does the same job.
+          - |
+            `git pull --rebase` does the same fetch, but replays your
+            commits on top instead of merging.
+        teach: |
+          `git pull` is two commands in one: a fetch, and then a merge of
+          what was fetched into your current branch. Here the fetch
+          brings in the remote's commit and the merge fast-forwards
+          `main` onto it, so the result is the same history the remote
+          has.
+
+          The reason `main` needs to know where to pull from is the
+          **upstream** setting -- the pair of config values that say "this
+          branch follows that branch on that remote". `git pull` with no
+          arguments uses it, and so do `git push` and `git status`.
+
+          When your branch and the remote have both moved on, `git pull`
+          merges, which leaves a merge commit in the history.
+          `git pull --rebase` instead replays your commits on top of the
+          remote's, so the history stays a straight line -- tidier, but it
+          rewrites your commits, so it is only safe while they are still
+          private to you.
+        tags: [remotes, merge]
+      - id: i-remotes-push
+        title: Push and set the upstream
+        prompt: |
+          There is an untracked file called `notes.txt` in your working
+          tree.
+
+          Commit it with the message `Add the notes`, push it to `origin`,
+          and set `main`'s upstream to `origin/main` so that later pulls
+          and pushes need no arguments.
+        kind: cli
+        starter: |
+          # Write your commands here, one per line.
+        solution: |
+          git add notes.txt
+          git commit -m "Add the notes"
+          git push -u origin main
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+          after:
+            - git fetch origin
+            - git merge --ff-only origin/main
+            - printf 'hello\n' > notes.txt
+          remotes:
+            origin:
+              files: {}
+              commands:
+                - printf 'remote\n' > remote.txt
+                - git add remote.txt
+                - git commit -m "Remote work"
+        checks:
+          - name: the remote has the new commit
+            kind: state
+            select: log
+            remote: origin
+          - name: main tracks origin
+            kind: command
+            command: git config --get branch.main.remote
+          - name: the upstream is origin/main
+            kind: command
+            command: git config --get branch.main.merge
+          - name: the history has three commits
+            kind: command
+            command: git rev-list --count HEAD
+        hints:
+          - |
+            An untracked file is not in the staging area yet. `git add` it
+            first.
+          - |
+            `git push -u origin main` pushes `main` to `origin` and
+            records the upstream.
+          - |
+            `git config --get branch.main.remote` is how you read the
+            upstream setting back.
+        teach: |
+          A push sends commits to the remote and moves the remote's
+          branch to match. Nothing is merged: the remote can only take
+          commits that are already in your history, so the push is
+          rejected if the remote has commits you do not have. That is the
+          remote saying "fetch and merge first".
+
+          `-u` (or `--set-upstream`) records the pair of config values that
+          tie your branch to a branch on the remote:
+          `branch.main.remote` is the remote's name and `branch.main.merge`
+          is the branch on it. After that, `git pull` and `git push` need
+          no arguments, and `git status` can tell you that you are ahead
+          by one commit or behind by one commit.
+
+          The upstream is a property of your local repository only. It
+          tells git where *your* commits are supposed to go; it says
+          nothing about what the remote has.
+        tags: [remotes, commit]
+      - id: i-remotes-clone
+        title: Clone the remote
+        prompt: |
+          Clone the remote `origin` into a new directory called `clone`.
+
+          The clone must go **beside** the repository you are in -- in its
+          parent directory, not inside it -- so that the working tree you
+          are standing in stays clean. `git remote get-url origin` prints
+          the URL you need.
+
+          The clone must have the remote's history, including the commit
+          that only exists on the remote.
+        kind: cli
+        starter: |
+          # Write your commands here, one per line.
+        solution: |
+          git clone "$(git remote get-url origin)" ../clone
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+          remotes:
+            origin:
+              files: {}
+              commands:
+                - printf 'remote\n' > remote.txt
+                - git add remote.txt
+                - git commit -m "Remote work"
+        checks:
+          - name: the clone exists
+            kind: command
+            command: test -d ../clone
+          - name: the clone has the remote's history
+            kind: command
+            command: git -C ../clone log --format=%s
+          - name: the clone is on main
+            kind: command
+            command: git -C ../clone branch --show-current
+          - name: your own working tree is untouched
+            kind: state
+            select: status
+        hints:
+          - |
+            `git clone <url> <directory>` copies a repository and checks
+            out its default branch.
+          - |
+            The URL is a path relative to the repository you are in, so
+            the clone has to go somewhere you can name with `..`.
+          - |
+            `git -C <directory>` runs a git command somewhere else.
+        teach: |
+          A clone copies the whole repository -- every commit, every
+          branch -- and checks out the remote's default branch. It is
+          heavier than a fetch because it brings the objects over as
+          well as the refs.
+
+          It also does two things that make a clone feel different from
+          the repository you cloned: it creates the `origin` remote, and
+          it sets the upstream for the branch it checked out. That is why
+          a fresh clone can `git pull` and `git push` with no arguments,
+          while a repository you built with `git init` cannot until you
+          tell git where it is going.
+
+          Cloning into a directory inside another repository is a good
+          way to confuse yourself: the clone's files show up as
+          untracked files in the outer repository, and commands run in
+          the wrong place. Hence `../clone`.
+        tags: [remotes, basics]
+  - id: i-history-navigation
+    title: Finding things in the history
+    summary: Reading the log, and searching it when you do not know what you are looking for.
+    body: |
+      # Finding things in the history
+
+      The history is a graph, and it is usually bigger than you remember.
+      These are the commands for finding the part of it you want.
+
+      ## Reading the log
+
+      ```bash
+      git log                     # the full log
+      git log --oneline           # one line per commit: hash and subject
+      git log --graph             # draw the shape of the history
+      git log --stat              # how much each commit changed
+      git log -- app.py           # only the commits that touched app.py
+      ```
+
+      `--oneline` is the view you want most of the time. `--graph` draws
+      the branches as ASCII art, which is the only reliable way to see a
+          merge. `--stat` adds a summary of the files each commit
+          touched, which is often enough to tell you whether a commit is
+          the one you are after.
+
+      The `--` before a path is what turns the rest of the line into a
+      pathspec rather than a revision. Everything after it is a file
+      filter.
+
+      ## Looking at one commit
+
+      ```bash
+      git show <commit>           # the commit and its changes
+      git show HEAD:app.py        # a file as it was in a commit
+      git blame app.py            # who last changed each line
+      ```
+
+      `git show` displays a commit: its metadata, then the diff.
+      `git show <ref>:<path>` reads a file out of a commit without
+      checking anything out, which is how you answer "what did this file
+      look like before that change?".
+
+      `git blame` annotates every line with the commit that last touched
+      it. It is the fastest way to find out who wrote a piece of code, or
+      which commit introduced a bug.
+
+      ## When you do not know what you are looking for
+
+      ```bash
+      git log -S "timeout"        # commits that changed the count of it
+      git log -G "regex"          # commits whose diff matches a regex
+      ```
+
+      `-S` counts how many times a string appears and reports the commits
+      where that number changed -- the commit that added the string and
+      the commit that removed it. `-G` is the same idea with a regular
+      expression, and it reports commits whose *diff* matches, which finds
+      changes that merely mention the pattern.
+
+      ## The escape hatch
+
+      ```bash
+      git reflog                  # where HEAD has been
+      ```
+
+      The reflog records every move `HEAD` has made, with a timestamp. It
+      is how you find a commit that a rebase or a reset threw away, and
+      it is why "I lost my commit" is almost never the end of the story.
+    exercises:
+      - id: i-history-navigation-log-oneline
+        title: Print the history in one line per commit
+        prompt: |
+          Write a command that prints the whole history, one commit per
+          line, in git's short one-line form: an abbreviated hash, a space,
+          and the commit's subject.
+
+          The newest commit comes first.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git log --oneline
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+            - printf 'print("hello")\n' > app.py
+            - git add app.py
+            - git commit -m "Add the app"
+            - printf '\nMore text.\n' >> README.md
+            - git add README.md
+            - git commit -m "Expand the readme"
+        checks:
+          - name: the script prints the one-line history
+            kind: output
+          - name: the history has three commits
+            kind: state
+            select: log
+        hints:
+          - |
+            `--oneline` is git's own short format: an abbreviated hash and
+            the subject, on one line each.
+          - |
+            `git log` on its own prints the full metadata and the diff for
+            every commit.
+          - |
+            The newest commit comes first by default; `--reverse` turns
+            the order around.
+        teach: |
+          `--oneline` is a shorthand for a pretty-print format: an
+          abbreviated hash, a space, and the subject line, with a newline
+          after each commit. It is the format you will read most often,
+          because the hash is what you paste into `git show` and the
+          subject is what tells you whether you want to.
+
+          The hash is abbreviated rather than printed in full because the
+          first few characters are enough to identify a commit in a
+          repository of any realistic size.
+
+          `git log` with no arguments prints the metadata and the diff of
+          every commit, which is a great deal of text once there are more
+          than a handful of commits. Reach for `--oneline` by default,
+          and add `--graph` when the shape of the history matters.
+        tags: [log, history]
+      - id: i-history-navigation-log-a-path
+        title: Only the commits that touched a file
+        prompt: |
+          `app.py` was added in one commit and changed in another.
+          `README.md` was changed in a third commit, which you do not want
+          to see.
+
+          Write a command that prints only the commits that touched
+          `app.py`, one per line, showing just each commit's subject, with
+          the newest first.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git log --format=%s -- app.py
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+            - printf 'print("hello")\n' > app.py
+            - git add app.py
+            - git commit -m "Add the app"
+            - printf 'print("goodbye")\n' > app.py
+            - git add app.py
+            - git commit -m "Change the app"
+            - printf '\nMore text.\n' >> README.md
+            - git add README.md
+            - git commit -m "Expand the readme"
+        checks:
+          - name: only the app.py commits are printed
+            kind: output
+        hints:
+          - |
+            A path after `--` tells git to limit the log to the commits
+            that touched that path.
+          - |
+            `--format=%s` prints just the subject of each commit.
+          - |
+            The `--` matters: it is what separates revisions from file
+            names.
+        teach: |
+          The `--` is a separator. Everything before it is a *revision* --
+          a commit, a branch, a range -- and everything after it is a
+          *pathspec*. Without the `--`, git would try to interpret
+          `app.py` as a revision and fail.
+
+          Filtering by path is how you answer "when did this file last
+          change?" without reading the whole log. Git walks the history
+          and keeps the commits whose diff touches the path, which for a
+          rename is a little subtle: with `--follow`, git keeps following
+          a file through its renames.
+
+          `--format=%s` is the other half. `git log` on its own prints the
+          full metadata and the diff of every commit, which is a lot of
+          text when you only want to know which commits to look at.
+        tags: [log, history]
+      - id: i-history-navigation-pickaxe
+        title: Find the commit that removed a string
+        prompt: |
+          The string `timeout` used to be in `config.py`, and at some point
+          it was removed.
+
+          Write a command that prints the subject of every commit in which
+          the number of occurrences of the string `timeout` in `config.py`
+          changed, with the newest first.
+        kind: cli
+        starter: |
+          # Write your command here.
+        solution: |
+          git log --format=%s -S timeout -- config.py
+        seed:
+          files:
+            README.md: |
+              # demo
+          commands:
+            - git add .
+            - git commit -m "Initial commit"
+            - printf 'timeout = 5\n' > config.py
+            - git add config.py
+            - git commit -m "Add the config"
+            - printf 'retries = 3\n' > config.py
+            - git add config.py
+            - git commit -m "Remove the timeout"
+        checks:
+          - name: the commits that changed the count are printed
+            kind: output
+        hints:
+          - |
+            `-S<string>` asks for the commits where the number of
+            occurrences of that string changed.
+          - |
+            Combine it with a path filter to keep the search to one file.
+          - |
+            `-G` is the same idea with a regular expression, and it
+            matches against the diff rather than counting.
+        teach: |
+          The pickaxe searches for a change rather than for a commit. `-S`
+          counts how many times a string appears in a file and reports
+          every commit where that count changed -- so both the commit
+          that added `timeout` and the commit that removed it show up.
+          That is usually exactly what you want: the pair of commits
+          tells you when the string arrived and when it left.
+
+          `-G` searches the diff itself with a regular expression, so it
+          finds commits where the pattern appears in the changed lines
+          even if the number of occurrences did not change -- a line
+          being edited, say.
+
+          Both are far more useful than they look. "When did this stop
+          being called that?" is a question you cannot answer by reading
+          commit messages, and the pickaxe answers it directly.
+        tags: [log, history]
