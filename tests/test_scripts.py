@@ -6,6 +6,7 @@ content. These tests check that they fix the one thing they understand and
 leave everything else alone.
 """
 
+import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -18,6 +19,7 @@ SCRIPTS = ROOT / "scripts"
 
 sys.path.insert(0, str(SCRIPTS))
 
+import serve  # noqa: E402
 from fix_multiline import fix_file as join_file  # noqa: E402
 from fix_quoting import fix_file as quote_file  # noqa: E402
 from lint_content import lint_file  # noqa: E402
@@ -133,12 +135,108 @@ class TestJoining:
         assert join_file(path, write=True) == []
 
 
+class TestServeScript:
+    """The start script has to find a free port, or it is no use."""
+
+    def test_a_free_port_is_found(self):
+        port, taken = serve.find_port(0)
+        assert port is not None
+        assert not taken
+
+    def test_a_busy_port_is_skipped(self):
+        """The whole point of the script."""
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind(("127.0.0.1", 0))
+            sock.listen(1)
+            busy = sock.getsockname()[1]
+
+            port, taken = serve.find_port(busy)
+            assert port > busy
+            assert busy in taken
+
+    def test_several_busy_ports_are_skipped(self):
+        ports = []
+        socks = []
+        for _ in range(3):
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind(("127.0.0.1", 0))
+            sock.listen(1)
+            socks.append(sock)
+            ports.append(sock.getsockname()[1])
+
+        try:
+            # The three sockets are on consecutive-ish ports, so the search
+            # must step over them rather than stopping at the first.
+            first = min(ports)
+            port, taken = serve.find_port(first)
+            assert port > first
+            assert first in taken
+        finally:
+            for sock in socks:
+                sock.close()
+
+    def test_a_busy_host_address_is_not_free(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind(("127.0.0.1", 0))
+            sock.listen(1)
+            port = sock.getsockname()[1]
+            assert serve.is_free(port, "127.0.0.1") is False
+
+    def test_the_wildcard_address_is_not_shown_as_a_url(self):
+        """0.0.0.0 is the address to bind, not one to visit."""
+        assert serve._display_host("0.0.0.0") == "127.0.0.1"
+        assert serve._display_host("127.0.0.1") == "127.0.0.1"
+
+    def test_a_chosen_port_is_honoured(self, capsys):
+        """--port moves the starting point, and the port that comes back is
+        the one that will be used."""
+        assert serve.main(["--port", "8123", "--dry-run"]) == 0
+        out = capsys.readouterr().out.strip()
+        assert out.isdigit()
+        assert int(out) >= 8123
+
+    def test_the_dry_run_prints_only_the_port(self, capsys):
+        """stdout has to stay a clean port number, so that
+        ``PORT=$(./start.sh --dry-run)`` works."""
+        assert serve.main(["--dry-run"]) == 0
+        assert capsys.readouterr().out.strip().isdigit()
+
+    def test_the_git_check_agrees_with_reality(self):
+        """The launcher must not claim git is missing when it is there, or
+        the other way round."""
+        ok, version = serve.git_status()
+        assert ok == (version is not None)
+        if ok and version:
+            assert version.startswith("git version")
+
+    def test_a_missing_git_is_reported_but_does_not_stop_the_server(
+        self, monkeypatch, capsys
+    ):
+        """Without git the exercises cannot run, but the lessons can, so the
+        launcher says so and carries on."""
+        monkeypatch.setattr(serve, "git_status", lambda: (False, None))
+        assert serve.main(["--dry-run"]) == 0
+        captured = capsys.readouterr()
+        assert "git was not found" in captured.err
+        assert captured.out.strip().isdigit()
+
+
 class TestScripts:
     """The scripts must at least run."""
 
     @pytest.mark.parametrize(
         "script",
-        ["lint_content.py", "fix_quoting.py", "fix_multiline.py", "smoke.py", "tag_exercises.py"],
+        [
+            "lint_content.py",
+            "fix_quoting.py",
+            "fix_multiline.py",
+            "smoke.py",
+            "tag_exercises.py",
+            "serve.py",
+        ],
     )
     def test_the_script_exists(self, script):
         assert (SCRIPTS / script).exists()

@@ -13,15 +13,40 @@ to rebasing, bisecting, hooks and recovering lost work.
 ## Quick start
 
 ```bash
-uv sync
-uv run uvicorn app.main:app --reload
+./start.sh
 ```
 
 Then open <http://127.0.0.1:8000>.
 
+`start.sh` finds a free port for you: it starts at 8000 and moves up until
+one is free, so it does not matter whether something else has taken 8000.
+It prints the URL it settled on.
+
+```bash
+./start.sh --port 9000       # start looking from 9000
+./start.sh --reload          # restart on a code change
+./start.sh --host 0.0.0.0    # reachable from your phone
+```
+
+`PORT` and `HOST` are read from the environment if you would rather set
+them there.
+
+The plain uvicorn command works too, if you would rather not have the
+script in the way:
+
+```bash
+uv run uvicorn app.main:app --reload --port 9000
+```
+
+`start.sh` runs `uv` for you and creates the environment on first run, so
+a fresh clone needs nothing but that one command.
+
 **Git has to be installed.** The exercises are really run, in real
 repositories, so without git there are no exercises. The lessons and the
 exercise text still work without it, and the home page says so plainly.
+`start.sh` says so too, at startup, and starts anyway -- it checks git the
+way the engine runs it, so a git that the sandbox cannot see is reported
+as missing even when it is on your path.
 
 Run the tests:
 
@@ -290,7 +315,8 @@ content/
   */track.yaml         tracks -> lessons -> exercises
 scripts/               lint_content.py, fix_quoting.py, fix_indentation.py,
                        fix_multiline.py, tag_exercises.py, smoke.py,
-                       browser_check.py, browser_flow.py
+                       serve.py, browser_check.py, browser_flow.py
+start.sh               the launcher: finds a free port, runs the server
 tests/
 ```
 
